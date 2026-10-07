@@ -24,7 +24,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
             {
                 Filter = "GBS Settings File (*.xml)|*.xml|All files (*.*)|*.*",
                 DefaultExt = ".xml",
-                FileName = "BloxstrapRobloxSettings.xml",
+                FileName = "DepthStrapRobloxSettings.xml",
                 Title = "Export GBS Settings"
             };
 

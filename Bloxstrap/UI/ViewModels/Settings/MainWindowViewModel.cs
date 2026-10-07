@@ -73,6 +73,11 @@ namespace Bloxstrap.UI.ViewModels.Settings
             App.FastFlags.Save();
             if (!App.FastFlags.LastSaveSucceeded) return false;
             App.GlobalSettings.Save();
+            if (!App.GlobalSettings.LastSaveSucceeded)
+            {
+                Frontend.ShowMessageBox("Roblox settings could not be saved. Your existing file was preserved; close Roblox and retry.", MessageBoxImage.Warning);
+                return false;
+            }
 
             foreach (var pair in App.PendingSettingTasks)
             {

@@ -53,7 +53,7 @@ namespace Bloxstrap.Utility
                         else File.Move(temp, path);
                         break;
                     }
-                    catch (IOException ex) when (attempt < 5 && (ex.HResult & 0xffff) is 32 or 33 or 80 or 183)
+                    catch (IOException ex) when (attempt < 5 && (ex.HResult & 0xffff) is 32 or 33 or 80 or 183 or 1175)
                     { Thread.Sleep(40 * (attempt + 1)); }
                     catch (FileNotFoundException) when (attempt < 5 && File.Exists(temp))
                     { /* A concurrent creator/deleter changed the destination; retry its current state. */ }

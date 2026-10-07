@@ -60,6 +60,16 @@ namespace Bloxstrap
         };
 
         public bool Loaded { get; set; } = false;
+        public bool LastLoadFailed { get; private set; }
+        public bool LastSaveSucceeded { get; private set; }
+
+        private static InterProcessLock Acquire()
+        {
+            var gate = new InterProcessLock("GlobalBasicSettings", TimeSpan.FromSeconds(2));
+            if (gate.IsAcquired) return gate;
+            gate.Dispose();
+            throw new IOException("Roblox settings are busy. Try saving again.");
+        }
 
         public string FileLocation => Path.Combine(Paths.Roblox, "GlobalBasicSettings_13.xml");
 
@@ -95,17 +105,18 @@ namespace Bloxstrap
             return Document?.XPathSelectElement(path)?.Value;
         }
 
-        public bool previousReadOnlyState;
+        public void SetReadOnly(bool readOnly) => TrySetReadOnly(readOnly);
 
-        public void SetReadOnly(bool readOnly, bool preserveState = false)
+        internal bool TrySetReadOnly(bool readOnly)
         {
             const string LOG_IDENT = "GBSEditor::SetReadOnly";
 
             if (!File.Exists(FileLocation))
-                return;
+                return false;
 
             try
             {
+                using var gate = Acquire();
                 FileAttributes attributes = File.GetAttributes(FileLocation);
 
                 if (readOnly)
@@ -115,13 +126,13 @@ namespace Bloxstrap
 
                 File.SetAttributes(FileLocation, attributes);
 
-                if (!preserveState)
-                    previousReadOnlyState = readOnly;
+                return true;
             }
             catch (Exception ex)
             {
                 App.Logger.WriteLine(LOG_IDENT, $"Failed to set read-only on {FileLocation}");
                 App.Logger.WriteException(LOG_IDENT, ex);
+                return false;
             }
         }
 
@@ -139,45 +150,81 @@ namespace Bloxstrap
 
             App.Logger.WriteLine(LOG_IDENT, $"Loading from {FileLocation}...");
 
-            if (!File.Exists(FileLocation)) // since the file gets created after roblox starts it might not exist yet  
-                return;
-
             try
             {
-                Document = XDocument.Load(FileLocation);
+                using var gate = Acquire();
+                if (!File.Exists(FileLocation))
+                {
+                    Document = null;
+                    Loaded = false;
+                    LastLoadFailed = false;
+                    return;
+                }
+                var document = ParseDocument(AtomicFile.ReadText(FileLocation));
+                Document = document;
                 Loaded = true;
-
-                previousReadOnlyState = GetReadOnly();
+                LastLoadFailed = false;
             }
             catch (Exception ex)
             {
+                LastLoadFailed = true;
                 App.Logger.WriteLine(LOG_IDENT, "Failed to load!");
                 App.Logger.WriteException(LOG_IDENT, ex);
             }
         }
 
-        public virtual void Save()
+        public virtual void Save() => TrySave();
+
+        public bool TrySave()
         {
             string LOG_IDENT = "GBSEditor::Save";
 
             App.Logger.WriteLine(LOG_IDENT, $"Saving to {FileLocation}...");
 
+            LastSaveSucceeded = false;
+            if (LastLoadFailed) return false;
+            if (Document is null) return LastSaveSucceeded = true;
             try
             {
-                SetReadOnly(false, true);
-                Document?.Save(FileLocation);
-
-                SetReadOnly(previousReadOnlyState);
+                WriteDocument(Document);
+                LastSaveSucceeded = true;
             }
             catch (Exception ex)
             {
                 App.Logger.WriteLine(LOG_IDENT, "Failed to save");
                 App.Logger.WriteException(LOG_IDENT, ex);
 
-                return;
+                return false;
             }
 
             App.Logger.WriteLine(LOG_IDENT, "Save complete!");
+            return true;
+        }
+
+        private static XDocument ParseDocument(string xml)
+        {
+            var document = XDocument.Parse(xml);
+            if (document.Root?.Name != "roblox" || document.XPathSelectElement("//Item[@class='UserGameSettings']/Properties") is null)
+                throw new InvalidDataException("The file does not contain Roblox user settings.");
+            return document;
+        }
+
+        private void WriteDocument(XDocument document)
+        {
+            string xml = document.ToString();
+            ParseDocument(xml);
+            using var gate = Acquire();
+            FileAttributes? original = File.Exists(FileLocation) ? File.GetAttributes(FileLocation) : null;
+            try
+            {
+                if (original is FileAttributes attributes && attributes.HasFlag(FileAttributes.ReadOnly))
+                    File.SetAttributes(FileLocation, attributes & ~FileAttributes.ReadOnly);
+                AtomicFile.WriteText(FileLocation, xml);
+            }
+            finally
+            {
+                if (original is FileAttributes attributes && File.Exists(FileLocation)) File.SetAttributes(FileLocation, attributes);
+            }
         }
 
         private string ResolvePath(string rawPath)
@@ -226,9 +273,13 @@ namespace Bloxstrap
             try
             {
                 if (!File.Exists(importPath)) return false;
-                SetReadOnly(false, true);
-                File.Copy(importPath, FileLocation, true);
-                Load();
+                // Validate the exact snapshot before replacing any current settings or lock state.
+                var imported = ParseDocument(AtomicFile.ReadText(importPath));
+                WriteDocument(imported);
+                Document = imported;
+                Loaded = true;
+                LastLoadFailed = false;
+                LastSaveSucceeded = true;
                 return true;
             }
             catch { return false; }

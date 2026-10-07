@@ -103,6 +103,74 @@ internal static class SettingsChecks
                 "An unreadable server cache keeps browsing available but cannot be replaced by an empty history");
         }
         check(AtomicFile.ReadText(knownPath) == knownSaved, "Failed cache reads preserve observed server metadata");
+        CheckRobloxSettings(check);
         App.Settings.Prop = new Settings();
+    }
+
+    private static void CheckRobloxSettings(Action<bool, string> check)
+    {
+        var editor = new GBSEditor();
+        string original = File.ReadAllText(editor.FileLocation);
+        var attributes = File.GetAttributes(editor.FileLocation);
+        try
+        {
+            editor.Load();
+            check(editor.Loaded && !editor.LastLoadFailed, "Roblox XML settings load as a validated user-settings document");
+            editor.SetPreset("Rendering.FramerateCap", 120);
+            editor.SetReadOnly(true);
+            check(editor.TrySave() && editor.LastSaveSucceeded && editor.GetReadOnly() &&
+                File.ReadAllText(editor.FileLocation).Contains(">120</int>"),
+                "Atomic Roblox settings save preserves an existing read-only quality lock");
+            string saved = File.ReadAllText(editor.FileLocation);
+            editor.SetPreset("Rendering.FramerateCap", 144);
+            using (var held = new FileStream(editor.FileLocation, FileMode.Open, FileAccess.Read, FileShare.Read))
+                check(!editor.TrySave() && !editor.LastSaveSucceeded,
+                    "A blocked Roblox settings replacement reports failure instead of save success");
+            check(editor.GetReadOnly() && File.ReadAllText(editor.FileLocation) == saved,
+                "Failed Roblox settings save preserves the full original XML and restores its quality lock");
+            string imported = Path.Combine(Paths.Cache, "import-settings-fixture.xml");
+            foreach (string invalid in new[] { "<broken", "<roblox version='4'/>" })
+            {
+                File.WriteAllText(imported, invalid);
+                check(!editor.ImportSettings(imported) && editor.GetReadOnly() && File.ReadAllText(editor.FileLocation) == saved,
+                    "Invalid XML or missing user properties cannot replace Roblox settings or remove their lock");
+            }
+            File.WriteAllText(imported, saved.Replace(">120</int>", ">165</int>"));
+            check(editor.ImportSettings(imported) && editor.GetReadOnly() && editor.GetPreset("Rendering.FramerateCap") == "165",
+                "Validated Roblox XML import updates memory and disk while retaining the original lock");
+            editor.SetReadOnly(false);
+            File.WriteAllText(editor.FileLocation, "<corrupt");
+            editor.Load();
+            check(editor.LastLoadFailed && editor.GetPreset("Rendering.FramerateCap") == "165" && !editor.TrySave() &&
+                File.ReadAllText(editor.FileLocation) == "<corrupt",
+                "A corrupt Roblox XML read keeps prior memory but blocks overwriting the damaged file");
+            AtomicFile.WriteText(editor.FileLocation, saved);
+            editor.Load();
+            check(!editor.LastLoadFailed && editor.TrySave(), "Repairing Roblox XML releases its failed-read save guard");
+            check(!Directory.EnumerateFiles(Paths.Roblox, "GlobalBasicSettings_13.xml.*.tmp").Any(),
+                "Failed Roblox XML writes leave no temporary files");
+            App.GlobalSettings.Load();
+            string quality = App.GlobalSettings.GetPreset("Rendering.SavedQualityLevel")!;
+            Bloxstrap.Roblox.CompetitiveSettingsBackup.SetGlobal("Rendering.SavedQualityLevel", quality == "3" ? "4" : "3");
+            App.GlobalSettings.Save();
+            string applied = File.ReadAllText(editor.FileLocation);
+            string backup = Path.Combine(Paths.Cache, "CompetitiveSettingsBackup.json");
+            using (var held = new FileStream(editor.FileLocation, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                Bloxstrap.Roblox.CompetitiveSettingsBackup.Restore();
+                check(File.Exists(backup), "A failed preset restoration retains its backup for a later retry");
+            }
+            check(File.ReadAllText(editor.FileLocation) == applied, "A blocked preset restore cannot rewrite the current Roblox XML");
+            Bloxstrap.Roblox.CompetitiveSettingsBackup.Restore();
+            check(!File.Exists(backup) && App.GlobalSettings.GetPreset("Rendering.SavedQualityLevel") == quality,
+                "A later successful preset restore recovers the original quality before removing its backup");
+        }
+        finally
+        {
+            File.SetAttributes(editor.FileLocation, FileAttributes.Normal);
+            AtomicFile.WriteText(editor.FileLocation, original);
+            File.SetAttributes(editor.FileLocation, attributes);
+            App.GlobalSettings.Load();
+        }
     }
 }

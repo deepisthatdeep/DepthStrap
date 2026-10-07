@@ -404,8 +404,13 @@ namespace Bloxstrap.UI.ViewModels.Settings
 
         private System.Windows.Threading.DispatcherTimer? _sessionTimer;
         private string _lastSessionState = "";
-        internal void StartSessionPolling() { PollSession(); _sessionTimer?.Start(); }
-        internal void StopSessionPolling() => _sessionTimer?.Stop();
+        internal void StartSessionPolling() { PollSession(); _sessionTimer?.Start(); if (_historyPaused) { _historyPaused = false; LoadHistory(); } }
+        internal void StopSessionPolling()
+        {
+            _sessionTimer?.Stop();
+            _historyPaused = true;
+            lock (_historyGate) _historyCancellation?.Cancel();
+        }
         private static bool IsSessionClientRunning(CompetitiveNetworkState state)
         {
             if (state.ProcessId == 0) return true; // compatibility with older watcher state files
@@ -552,12 +557,63 @@ namespace Bloxstrap.UI.ViewModels.Settings
 
         /// <summary>
         /// Loads the last 50 matches (3 daily files, newest first) and rebuilds run-label summaries.
-        /// Called on page load + manual refresh; JSONL is append-only so re-reading is cheap enough.
+        /// Reads only the tail needed for 50 matches, off the UI thread.
         /// </summary>
-        private void LoadHistory()
+        private CancellationTokenSource? _historyCancellation;
+        private readonly object _historyGate = new();
+        private bool _historyPaused;
+        public string HistoryStatus { get; private set; } = "";
+        internal Task HistoryLoadTask { get; private set; } = Task.CompletedTask;
+        private void LoadHistory() => HistoryLoadTask = LoadHistoryAsync();
+
+        private async Task LoadHistoryAsync()
         {
+            var cancellation = new CancellationTokenSource();
+            lock (_historyGate)
+            {
+                _historyCancellation?.Cancel();
+                _historyCancellation = cancellation;
+            }
+            var token = cancellation.Token;
+            HistoryStatus = "Loading recent matches…";
+            OnPropertyChanged(nameof(HistoryStatus));
             try
             {
+                var result = await Task.Run(() => ReadHistory(token), token);
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    if (token.IsCancellationRequested || _historyCancellation != cancellation) return;
+                    RecentMatches.Clear();
+                    foreach (var row in result.Rows) RecentMatches.Add(row);
+                    RunSummaries.Clear();
+                    foreach (var summary in result.Summaries) RunSummaries.Add(summary);
+                    HistoryStatus = result.Rows.Count == 0 ? "No matches recorded in the last three days." : $"Showing {result.Rows.Count} recent matches.";
+                    OnPropertyChanged(nameof(HistoryStatus));
+                });
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                App.Logger.WriteException("CompetitivePageViewModel::LoadHistory", ex);
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    if (token.IsCancellationRequested || _historyCancellation != cancellation) return;
+                    HistoryStatus = "History is unavailable. Existing results were kept; try Refresh again.";
+                    OnPropertyChanged(nameof(HistoryStatus));
+                });
+            }
+            finally
+            {
+                lock (_historyGate)
+                {
+                    if (_historyCancellation == cancellation) _historyCancellation = null;
+                    cancellation.Dispose();
+                }
+            }
+        }
+
+        private static (List<RecentMatchRow> Rows, List<RunLabelSummary> Summaries) ReadHistory(CancellationToken token)
+        {
                 var rows = new List<RecentMatchRow>();
                 var allEvents = new List<JsonlLineDto>();
 
@@ -567,7 +623,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
                     if (!File.Exists(path))
                         continue;
 
-                    foreach (string line in File.ReadLines(path).Reverse())
+                    foreach (string line in ReverseLineReader.Read(path, token))
                     {
                         var evt = ParseEventLine(line);
                         if (evt is null)
@@ -590,10 +646,6 @@ namespace Bloxstrap.UI.ViewModels.Settings
                             break;
                     }
                 }
-
-                RecentMatches.Clear();
-                foreach (var row in rows)
-                    RecentMatches.Add(row);
 
                 // --- run-label comparison (Direct vs WARP etc.) ---
                 var summaries = new List<RunLabelSummary>();
@@ -621,14 +673,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
 
                 summaries.Sort((a, b) => b.Matches.CompareTo(a.Matches));
 
-                RunSummaries.Clear();
-                foreach (var s in summaries)
-                    RunSummaries.Add(s);
-            }
-            catch (Exception ex)
-            {
-                App.Logger.WriteException("CompetitivePageViewModel::LoadHistory", ex);
-            }
+                return (rows, summaries);
         }
 
         private static JsonlLineDto? ParseEventLine(string line)

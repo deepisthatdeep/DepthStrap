@@ -354,6 +354,8 @@
                 <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                            TextWrapping="Wrap" Margin="0,0,0,6"
                            Text="Last 50 matches from the JSONL history (3 days). Read-only view - full data lives in Logs/CompetitiveSessions." />
+                <TextBlock Text="{Binding HistoryStatus}" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,6"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
 
                 <ListView ItemsSource="{Binding RecentMatches}" Height="240" BorderThickness="1">
                     <ListView.View>

@@ -110,6 +110,7 @@ internal static class Program
         ServerBrowserChecks.Run(Check);
         if (args.Contains("--verify-public-network")) ServerBrowserChecks.VerifyPublicNetwork(Check);
         WatcherChecks.Run(Check);
+        HistoryChecks.Run(Check);
         VerifyThemes(app);
         if (args.Contains("--calibrate"))
         {

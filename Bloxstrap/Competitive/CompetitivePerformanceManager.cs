@@ -360,22 +360,22 @@ namespace Bloxstrap.Competitive
                 return;
             }
 
-            CompetitiveSettingsBackup.Restore();
+            if (!CompetitiveSettingsBackup.Restore()) return;
             MonitorRefreshRateService.ApplyDetectedCap();
-            ApplyGlobalBasicSettings();
+            bool globalApplied = ApplyGlobalBasicSettings();
             ApplyFastFlagLayer();
-            if (App.Settings.Prop.CompetitiveAggressiveRendering)
+            if (App.Settings.Prop.CompetitiveAggressiveRendering && globalApplied)
                 CompetitiveSettingsBackup.LockQuality();
         }
 
-        private static void ApplyGlobalBasicSettings()
+        private static bool ApplyGlobalBasicSettings()
         {
             const string LOG_IDENT2 = "CompetitivePerformance.GBS";
 
             try
             {
-                if (!App.GlobalSettings.Loaded)
-                    App.GlobalSettings.Load();
+                App.GlobalSettings.Load();
+                if (App.GlobalSettings.LastLoadFailed) return false;
 
                 if (!App.GlobalSettings.Loaded)
                 {
@@ -385,6 +385,7 @@ namespace Bloxstrap.Competitive
                         "<roblox version=\"4\"><External>null</External><External>nil</External><Item class=\"UserGameSettings\" referent=\"RBX0\"><Properties><int name=\"FramerateCap\">0</int><token name=\"SavedQualityLevel\">3</token></Properties></Item></roblox>");
                     App.GlobalSettings.Loaded = true;
                     App.GlobalSettings.Save();
+                    if (!App.GlobalSettings.LastSaveSucceeded) return false;
                 }
 
                 bool changed = false;
@@ -417,13 +418,16 @@ namespace Bloxstrap.Competitive
                 if (changed)
                 {
                     App.GlobalSettings.Save();
+                    if (!App.GlobalSettings.LastSaveSucceeded) return false;
                     App.Logger.WriteLine(LOG_IDENT2, "GlobalBasicSettings updated and saved");
                 }
+                return true;
             }
             catch (Exception ex)
             {
                 App.Logger.WriteException($"{LOG_IDENT}::ApplyGlobalBasicSettings", ex);
                 CompetitiveSessionLogger.Write($"GBS apply failed: {ex.Message}");
+                return false;
             }
         }
 

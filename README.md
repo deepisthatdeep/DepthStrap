@@ -1,4 +1,4 @@
-# DepthStrap 1.0.4
+# DepthStrap 1.0.5
 
 A Windows Roblox launcher with a Crimson Contract theme, a custom stone and crimson icon, Competitive and Balanced profiles, and local server-route learning.
 
@@ -15,6 +15,8 @@ The standalone Windows x64 build includes .NET and requires no separate runtime 
 Version 1.0.3 repairs warning settings disabled by an older failed datacenter-registry test. Live warnings and autolog operate independently of benchmark capabilities and start their required watcher even when other monitoring options are disabled. The watcher recognizes replacement joins and teleports without disconnect lines, accepts either server-confirmation order and retries temporarily locked log files. Location lookup retries transient failures and can use matching selected-server metadata or observed job history; missing universe logs fall back to Roblox's public place API. Warning and autolog decisions precede optional WARP/ping diagnostics. Unknown locations never cause an automatic leave, and stale results cannot warn about a server you have left. The recovery-loop safeguards from 1.0.2 remain in place.
 
 Version 1.0.4 preserves settings after unreadable or corrupt file loads, serializes cooperating settings readers and writers, and adds local Git privacy guards. Autolog accepts delayed region lookups only while their original join remains active. Custom app/Roblox fonts are validated as usable font faces, retained locally, and applied or reset only after settings save successfully.
+
+Version 1.0.5 makes Roblox XML saves and imports atomic and validates imports before replacement. Failed saves preserve the file and quality lock, stop save/launch success flows, and retain preset backups for retry. Recent match history reads only the required tail in the background, cancels on page exit, and reports loading, empty and unavailable states.
 
 ## Features
 

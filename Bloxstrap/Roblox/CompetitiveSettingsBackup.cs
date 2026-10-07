@@ -61,15 +61,16 @@ namespace Bloxstrap.Roblox
             App.FastFlags.SetPreset(key, value);
         }
 
-        public static void Restore()
+        public static bool Restore()
         {
             try
             {
                 using var gate = Acquire();
-                if (!File.Exists(FilePath)) return;
-                ReleaseQualityLock();
+                if (!File.Exists(FilePath)) return true;
+                if (!ReleaseQualityLock()) return false;
                 var backup = Read();
                 App.GlobalSettings.Load();
+                if (App.GlobalSettings.LastLoadFailed) return false;
                 foreach (var (key, change) in backup.Global)
                     if (App.GlobalSettings.GetPreset(key) == change.Applied && change.Original is not null)
                         App.GlobalSettings.SetPreset(key, change.Original);
@@ -77,15 +78,18 @@ namespace Bloxstrap.Roblox
                     if (App.FastFlags.GetPreset(key) == change.Applied)
                         App.FastFlags.SetPreset(key, change.Original);
                 App.GlobalSettings.Save();
+                if (!App.GlobalSettings.LastSaveSucceeded) return false;
                 App.FastFlags.Save();
+                if (!App.FastFlags.LastSaveSucceeded) return false;
                 File.Delete(FilePath);
+                return true;
             }
-            catch (Exception ex) { App.Logger.WriteException("CompetitiveSettingsBackup::Restore", ex); }
+            catch (Exception ex) { App.Logger.WriteException("CompetitiveSettingsBackup::Restore", ex); return false; }
         }
 
         public static void LockQuality()
         {
-            if (!App.GlobalSettings.Loaded || !File.Exists(App.GlobalSettings.FileLocation)) return;
+            if (!App.GlobalSettings.Loaded || App.GlobalSettings.LastLoadFailed || !File.Exists(App.GlobalSettings.FileLocation)) return;
             try
             {
                 using var gate = Acquire();
@@ -97,19 +101,20 @@ namespace Bloxstrap.Roblox
             catch (Exception ex) { App.Logger.WriteException("CompetitiveSettingsBackup::Lock", ex); }
         }
 
-        public static void ReleaseQualityLock()
+        public static bool ReleaseQualityLock()
         {
             try
             {
                 using var gate = Acquire();
-                if (!File.Exists(FilePath)) return;
+                if (!File.Exists(FilePath)) return true;
                 var backup = Read();
-                if (backup.OriginalReadOnly is not bool original) return;
-                App.GlobalSettings.SetReadOnly(original);
+                if (backup.OriginalReadOnly is not bool original) return true;
+                if (!App.GlobalSettings.TrySetReadOnly(original)) return false;
                 backup.OriginalReadOnly = null;
                 Save(backup);
+                return true;
             }
-            catch (Exception ex) { App.Logger.WriteException("CompetitiveSettingsBackup::Unlock", ex); }
+            catch (Exception ex) { App.Logger.WriteException("CompetitiveSettingsBackup::Unlock", ex); return false; }
         }
     }
 }
