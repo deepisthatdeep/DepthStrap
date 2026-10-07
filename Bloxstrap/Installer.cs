@@ -533,22 +533,7 @@ namespace Bloxstrap
                     // move from App.State to App.RobloxState
                     JsonManager<RobloxState> legacyRobloxState = new();
 
-                    if (legacyRobloxState.IsSaved)
-                    {
-                        if (legacyRobloxState.Load(false))
-                        {
-                            App.PlayerState.Prop.VersionGuid = legacyRobloxState.Prop.Player.VersionGuid;
-                            App.PlayerState.Prop.PackageHashes = legacyRobloxState.Prop.Player.PackageHashes;
-                            App.PlayerState.Prop.Size = legacyRobloxState.Prop.Player.Size;
-                            App.PlayerState.Prop.ModManifest = legacyRobloxState.Prop.ModManifest.ToDictionary(x => x, x => new ModFileEntry());
-
-                            App.StudioState.Prop.VersionGuid = legacyRobloxState.Prop.Studio.VersionGuid;
-                            App.StudioState.Prop.PackageHashes = legacyRobloxState.Prop.Studio.PackageHashes;
-                            App.StudioState.Prop.Size = legacyRobloxState.Prop.Studio.Size;
-                        }
-
-                        legacyRobloxState.Delete();
-                    }
+                    LegacyRobloxStateMigration.Migrate(legacyRobloxState, App.PlayerState, App.StudioState);
 
                     if (App.Settings.Prop.Theme == Theme.Custom)
                     {

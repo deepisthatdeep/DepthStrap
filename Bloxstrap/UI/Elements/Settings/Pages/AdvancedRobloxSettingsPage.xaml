@@ -35,6 +35,9 @@
                     <controls:OptionControl Header="Installed builds">
                         <ComboBox Width="260" IsEnabled="{Binding CanEditVersion}" ItemsSource="{Binding CachedVersions}" SelectedItem="{Binding SelectedCachedVersion, Mode=TwoWay}" />
                     </controls:OptionControl>
+                    <controls:OptionControl Header="Current installed Roblox build" Description="Read from the Player installation state when this page opens or builds are refreshed.">
+                        <TextBlock Text="{Binding InstalledBuild}" TextWrapping="Wrap" MaxWidth="300" />
+                    </controls:OptionControl>
                     <controls:OptionControl Header="Roblox build ID" Description="version- followed by 16 hexadecimal characters. This is the Roblox Player build, not the DepthStrap app version. Installation does not launch Roblox.">
                         <TextBox Width="260" Padding="6,3" IsEnabled="{Binding CanEditVersion}" Text="{Binding VersionId, UpdateSourceTrigger=PropertyChanged}" />
                     </controls:OptionControl>

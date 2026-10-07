@@ -135,6 +135,47 @@ internal static class SettingsChecks
         AtomicFile.WriteText(appState.FileLocation, "{\"VersionGuid\":null,\"PackageHashes\":null}");
         check(appState.Load(false) && appState.Prop.VersionGuid == "" && appState.Prop.PackageHashes.Count == 0,
             "Null installed-version metadata recovers an empty verified package state");
+        foreach (string product in new[] { "Player", "Studio" })
+        {
+            var distribution = new LazyJsonManager<DistributionState>("Null" + product + "DistributionFixture");
+            string damaged = "{\"VersionGuid\":\"version-0123456789abcdef\",\"PackageHashes\":null,\"ModManifest\":null,\"Size\":-1}";
+            AtomicFile.WriteText(distribution.FileLocation, damaged);
+            check(distribution.Prop.PackageHashes.Count == 0 && distribution.Prop.ModManifest.Count == 0 &&
+                distribution.Prop.Size == 0 && distribution.Prop.InstallationPending && distribution.Prop.VersionGuid == "version-0123456789abcdef",
+                "Live Player and Studio manager types normalize null package/mod state and retain a repairable build selection");
+            check(File.ReadAllText(distribution.FileLocation) == damaged && distribution.TrySave() &&
+                new JsonManager<DistributionState>(distribution.ClassName).Load(false),
+                "Recovered distribution state stays unchanged on disk until an explicit save and then reloads successfully");
+            AtomicFile.WriteText(distribution.FileLocation, "{\"VersionGuid\":\"../outside\",\"PackageHashes\":{\"ok.zip\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"bad.zip\":null},\"ModManifest\":{\"../outside.txt\":{},\"safe/file.ttf\":{},\"null.txt\":null}}");
+            check(distribution.Load(false) && distribution.Prop.VersionGuid == "" && distribution.Prop.InstallationPending &&
+                distribution.Prop.PackageHashes.Count == 1 && distribution.Prop.PackageHashes["ok.zip"] == new string('a', 32) &&
+                distribution.Prop.ModManifest.Count == 1 && distribution.Prop.ModManifest.ContainsKey("safe\\file.ttf"),
+                "Invalid build paths and unsafe or null mod entries cannot drive file restoration outside the Roblox build");
+        }
+        var legacy = new JsonManager<RobloxState>("NullLegacyRobloxStateFixture");
+        AtomicFile.WriteText(legacy.FileLocation, "{\"Player\":null,\"Studio\":null,\"ModManifest\":[null,\"../outside\",\"safe/file.ttf\",\"safe/file.ttf\"]}");
+        check(legacy.Load(false) && legacy.Prop.Player is not null && legacy.Prop.Studio is not null &&
+            legacy.Prop.ModManifest.SequenceEqual(new[] { "safe\\file.ttf" }),
+            "Legacy migration input normalizes missing products and rejects unsafe or duplicate mod paths");
+        var migrationPlayer = new JsonManager<DistributionState>("MigrationPlayerFixture");
+        var migrationStudio = new JsonManager<DistributionState>("MigrationStudioFixture");
+        migrationPlayer.TrySave(); migrationStudio.TrySave();
+        string legacyText = File.ReadAllText(legacy.FileLocation);
+        File.SetAttributes(migrationStudio.FileLocation, FileAttributes.ReadOnly);
+        bool migrationFailed = false;
+        try { LegacyRobloxStateMigration.Migrate(legacy, migrationPlayer, migrationStudio); }
+        catch (IOException) { migrationFailed = true; }
+        finally { File.SetAttributes(migrationStudio.FileLocation, FileAttributes.Normal); }
+        check(migrationFailed && File.ReadAllText(legacy.FileLocation) == legacyText,
+            "A failed migration save retains the original legacy file even after one product state saved successfully");
+        LegacyRobloxStateMigration.Migrate(legacy, migrationPlayer, migrationStudio);
+        check(!File.Exists(legacy.FileLocation) && migrationPlayer.Prop.ModManifest.ContainsKey("safe\\file.ttf") &&
+            new JsonManager<DistributionState>(migrationPlayer.ClassName).Load(false) && new JsonManager<DistributionState>(migrationStudio.ClassName).Load(false),
+            "Legacy migration removes its original only after both normalized product states are saved and reloadable");
+        AtomicFile.WriteText(legacy.FileLocation, "{broken");
+        migrationFailed = false;
+        try { LegacyRobloxStateMigration.Migrate(legacy, migrationPlayer, migrationStudio); } catch (IOException) { migrationFailed = true; }
+        check(migrationFailed && File.ReadAllText(legacy.FileLocation) == "{broken", "Unreadable legacy installation state is preserved instead of deleted by migration");
         string backup = Path.Combine(Paths.Cache, "CompetitiveSettingsBackup.json");
         foreach (string invalid in new[] { "null", "{\"Global\":null}", "{\"Flags\":{\"Rendering.MSAA1\":null}}" })
         {

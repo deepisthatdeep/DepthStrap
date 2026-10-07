@@ -175,6 +175,11 @@ internal static class Program
         }
         App.Settings.Prop.Theme = Theme.CrimsonContract;
         BrandTheme.Apply(app.Resources, Theme.CrimsonContract);
+        var launchSettingsPage = new AdvancedRobloxSettingsPage();
+        launchSettingsPage.SetValue(System.Windows.Documents.TextElement.ForegroundProperty, app.Resources["TextFillColorPrimaryBrush"]);
+        SaveVisual(new System.Windows.Controls.Border { Background = (Brush)app.Resources["ApplicationBackground"], Padding = new Thickness(20),
+            Child = new System.Windows.Controls.Frame { NavigationUIVisibility = System.Windows.Navigation.NavigationUIVisibility.Hidden, Content = launchSettingsPage } },
+            Path.Combine(Path.GetDirectoryName(output)!, "DepthStrap-RobloxBuilds.png"), 1000, 750);
         App.FastFlags.SetValue("FFlagDebugSkyGray", "True");
         App.FastFlags.SetValue("FIntDebugForceMSAASamples", "1");
         var editor = new FastFlagEditorPage(); editor.ReloadList();

@@ -1,4 +1,4 @@
-# DepthStrap 1.0.8
+# DepthStrap 1.0.9
 
 A Windows Roblox launcher with a Crimson Contract theme, a custom stone and crimson icon, Competitive and Balanced profiles, and local server-route learning.
 
@@ -17,6 +17,8 @@ Version 1.0.3 repairs warning settings disabled by an older failed datacenter-re
 Version 1.0.4 preserves settings after unreadable or corrupt file loads, serializes cooperating settings readers and writers, and adds local Git privacy guards. Autolog accepts delayed region lookups only while their original join remains active. Custom app/Roblox fonts are validated as usable font faces, retained locally, and applied or reset only after settings save successfully.
 
 Version 1.0.5 makes Roblox XML saves and imports atomic and validates imports before replacement. Failed saves preserve the file and quality lock, stop save/launch success flows, and retain preset backups for retry. Recent match history reads only the required tail in the background, cancels on page exit, and reports loading, empty and unavailable states.
+
+Version 1.0.9 recovers malformed Player and Studio installation metadata in memory, validates mod paths and marks damaged metadata for repair. Legacy state is retained until both migrated product states save successfully. Rollback reloads the installed build from disk and confirms its executable and completion state before reporting success; failed refreshes retain previous choices.
 
 Version 1.0.8 checks disk space before modifying an existing install, uses 64-bit package totals, and bounds extraction concurrency. Failed and cancelled installs wait for extraction workers and retain a Player- or Studio-specific recovery marker. Completed installs require successful state saves. Rollback installs the selected build without automatically launching Roblox; build IDs are distinct from the DepthStrap app version. Third-party executor compatibility has not been verified.
 

@@ -16,7 +16,11 @@ namespace Bloxstrap.UI.ViewModels.Settings
         public Action? UpdatePolicyChanged { get; set; }
         internal Func<CancellationToken, Task<string>> PreviousLookup { get; set; } = WeaoDowngradeSource.GetPreviousAsync;
         internal Func<Task<int>> RunInstaller { get; set; } = RunInstallerAsync;
-        public ObservableCollection<string> CachedVersions { get; } = new(RobloxVersionArchive.InstalledPlayerVersions());
+        public ObservableCollection<string> CachedVersions { get; } = new();
+        private DistributionState? _installed;
+        public string InstalledBuild => _installed is null ? "Unavailable" :
+            _installed.InstallationPending ? "Installation incomplete; repair required" :
+            RobloxVersionArchive.IsVersionId(_installed.VersionGuid) ? _installed.VersionGuid : "No installed build recorded";
         public bool CanEditVersion => !_busy;
         public string VersionId { get => _version; set { if (!_busy) SetVersion(value ?? ""); } }
         private void SetVersion(string value) { _version = value; OnPropertyChanged(nameof(VersionId)); OnPropertyChanged(nameof(SelectedCachedVersion)); }
@@ -39,6 +43,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
             OpenDowngradeSourceCommand = new RelayCommand(() => Utilities.ShellExecute(WeaoDowngradeSource.DownloadLink(VersionId)));
             if (App.Settings.Prop.PauseRobloxUpdates) Status = "Roblox updates paused. The installed Player version is retained; the latest is installed when no build exists.";
             if (VersionId.Length > 0) Status = "Pinned to " + VersionId;
+            TryRefreshVersions();
         }
 
         private void SetBusy(bool busy)
@@ -97,9 +102,14 @@ namespace Bloxstrap.UI.ViewModels.Settings
             UpdatePolicyChanged?.Invoke();
             Status = "Installing " + version + ". Downgrade source: rdd.weao.gg (WEAO RDD). Packages come from Roblox and are verified against its manifest.";
             int exitCode = await RunInstaller();
-            RefreshVersions();
-            Status = exitCode == 0 ? "Installer finished for " + version + ". The selected build remains pinned." :
-                "Installer exited with code " + exitCode + ". The saved version selection remains pinned; retry or select Use latest.";
+            bool refreshed = TryRefreshVersions();
+            if (exitCode != 0)
+                Status = "Installer exited with code " + exitCode + ". The saved version selection remains pinned; retry or select Use latest.";
+            else if (refreshed && _installed is { InstallationPending: false } &&
+                string.Equals(_installed.VersionGuid, version, StringComparison.OrdinalIgnoreCase) && CachedVersions.Contains(version))
+                Status = "Installer finished for " + version + ". The selected build remains pinned. Launch Roblox when ready.";
+            else
+                Status = "The installer returned success, but the selected build could not be confirmed. Refresh builds or retry installation before launching.";
         }
 
         private void SaveSelection(string version, bool latest)
@@ -131,11 +141,30 @@ namespace Bloxstrap.UI.ViewModels.Settings
             catch (Exception ex) { Status = "Could not save the latest-version selection: " + ex.Message; }
         }
 
-        private void RefreshVersions()
+        private void RefreshVersions() => TryRefreshVersions();
+
+        private bool TryRefreshVersions()
         {
-            CachedVersions.Clear();
-            foreach (var version in RobloxVersionArchive.InstalledPlayerVersions()) CachedVersions.Add(version);
-            OnPropertyChanged(nameof(SelectedCachedVersion));
+            try
+            {
+                var versions = RobloxVersionArchive.InstalledPlayerVersions();
+                if (!App.PlayerState.Load(false) && App.PlayerState.LastLoadFailed)
+                    throw new IOException("The installed Player state could not be read.");
+                _installed = App.PlayerState.IsSaved ? App.PlayerState.Prop : new DistributionState();
+                CachedVersions.Clear();
+                foreach (var version in versions) CachedVersions.Add(version);
+                OnPropertyChanged(nameof(InstalledBuild));
+                OnPropertyChanged(nameof(SelectedCachedVersion));
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _installed = null;
+                OnPropertyChanged(nameof(InstalledBuild));
+                App.Logger.WriteException("RobloxVersionArchive::Refresh", ex);
+                Status = "Could not refresh installed builds. Existing choices were kept; retry Refresh builds.";
+                return false;
+            }
         }
 
         internal static ProcessStartInfo InstallerStartInfo() => new(Paths.Application, "-player -force -nolaunch") { UseShellExecute = false };
