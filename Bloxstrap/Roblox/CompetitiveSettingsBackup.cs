@@ -17,10 +17,34 @@ namespace Bloxstrap.Roblox
         }
 
         private static string FilePath => Path.Combine(Paths.Cache, "CompetitiveSettingsBackup.json");
-        private static Backup Read() => File.Exists(FilePath)
-            ? JsonSerializer.Deserialize<Backup>(AtomicFile.ReadText(FilePath)) ?? new() : new();
+        private static Backup Read()
+        {
+            if (!File.Exists(FilePath)) return new();
+            var backup = JsonSerializer.Deserialize<Backup>(AtomicFile.ReadText(FilePath));
+            if (backup is null || backup.Global is null || backup.Flags is null ||
+                backup.Global.Values.Any(x => x is null) || backup.Flags.Values.Any(x => x is null))
+                throw new InvalidDataException("The Competitive settings backup is incomplete; it was preserved for recovery.");
+            return backup;
+        }
 
-        private static InterProcessLock Acquire()
+        internal static Func<bool> PlayerPresence { get; set; } = HasPlayers;
+        private static bool HasPlayers()
+        {
+            Process[] players;
+            try { players = Process.GetProcessesByName("RobloxPlayerBeta"); }
+            catch { return true; } // Unavailable process information is not evidence that every client exited.
+            try { return players.Any(x => !x.HasExited); }
+            catch { return true; }
+            finally { foreach (var player in players) player.Dispose(); }
+        }
+
+        internal static bool IsQualityLockInUse()
+        {
+            using var gate = Acquire();
+            return Read().OriginalReadOnly is not null && PlayerPresence();
+        }
+
+        internal static InterProcessLock Acquire()
         {
             var gate = new InterProcessLock("CompetitiveSettingsBackup", TimeSpan.FromSeconds(10));
             if (gate.IsAcquired) return gate;
@@ -67,21 +91,32 @@ namespace Bloxstrap.Roblox
             {
                 using var gate = Acquire();
                 if (!File.Exists(FilePath)) return true;
-                if (!ReleaseQualityLock()) return false;
                 var backup = Read();
-                App.GlobalSettings.Load();
-                if (App.GlobalSettings.LastLoadFailed) return false;
-                foreach (var (key, change) in backup.Global)
-                    if (App.GlobalSettings.GetPreset(key) == change.Applied && change.Original is not null)
-                        App.GlobalSettings.SetPreset(key, change.Original);
+                bool deferGlobal = backup.OriginalReadOnly is not null && PlayerPresence();
+                if (!deferGlobal)
+                {
+                    if (!ReleaseQualityLock()) return false;
+                    backup = Read();
+                    App.GlobalSettings.Load();
+                    if (App.GlobalSettings.LastLoadFailed) return false;
+                    foreach (var (key, change) in backup.Global)
+                        if (App.GlobalSettings.GetPreset(key) == change.Applied && change.Original is not null)
+                            App.GlobalSettings.SetPreset(key, change.Original);
+                    App.GlobalSettings.Save();
+                    if (!App.GlobalSettings.LastSaveSucceeded) return false;
+                }
                 foreach (var (key, change) in backup.Flags)
                     if (App.FastFlags.GetPreset(key) == change.Applied)
                         App.FastFlags.SetPreset(key, change.Original);
-                App.GlobalSettings.Save();
-                if (!App.GlobalSettings.LastSaveSucceeded) return false;
                 App.FastFlags.Save();
                 if (!App.FastFlags.LastSaveSucceeded) return false;
-                File.Delete(FilePath);
+                if (deferGlobal)
+                {
+                    backup.Flags.Clear();
+                    Save(backup);
+                    App.Logger.WriteLine("CompetitiveSettingsBackup", "Shared graphics restoration deferred while Roblox clients are active.");
+                }
+                else File.Delete(FilePath);
                 return true;
             }
             catch (Exception ex) { App.Logger.WriteException("CompetitiveSettingsBackup::Restore", ex); return false; }
@@ -109,6 +144,7 @@ namespace Bloxstrap.Roblox
                 if (!File.Exists(FilePath)) return true;
                 var backup = Read();
                 if (backup.OriginalReadOnly is not bool original) return true;
+                if (PlayerPresence()) return false;
                 if (!App.GlobalSettings.TrySetReadOnly(original)) return false;
                 backup.OriginalReadOnly = null;
                 Save(backup);

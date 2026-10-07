@@ -85,6 +85,7 @@ internal static class Program
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         Paths.Initialize(Path.Combine(Path.GetDirectoryName(output)!, "test-data-" + Guid.NewGuid().ToString("N")));
         typeof(Paths).GetProperty("Roblox")!.SetValue(null, Path.Combine(Paths.Base, "Roblox"));
+        CompetitiveSettingsBackup.PlayerPresence = () => false;
         typeof(App).GetProperty("LaunchSettings")!.SetValue(null, new LaunchSettings(Array.Empty<string>()));
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         var document = System.Xml.Linq.XDocument.Load("Bloxstrap/App.xaml");
@@ -107,6 +108,7 @@ internal static class Program
         NetworkChecks.Run(Check, args.Contains("--verify-warp-package") ? args[Array.IndexOf(args, "--verify-warp-package") + 1] : null);
         FeatureChecks.Run(Check);
         SettingsChecks.Run(Check);
+        VersionChecks.Run(Check);
         ServerBrowserChecks.Run(Check);
         if (args.Contains("--verify-public-network")) ServerBrowserChecks.VerifyPublicNetwork(Check);
         WatcherChecks.Run(Check);

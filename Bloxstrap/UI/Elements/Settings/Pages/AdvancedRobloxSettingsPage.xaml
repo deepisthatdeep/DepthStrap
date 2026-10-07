@@ -30,12 +30,13 @@
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,2">
                         <ui:Button Content="Downgrade from WEAO RDD" Command="{Binding DowngradePreviousCommand}" Padding="12,6" />
                         <ui:Button Content="Open rdd.weao.gg" Command="{Binding OpenDowngradeSourceCommand}" Margin="8,0,0,0" Padding="12,6" />
+                        <ui:Button Content="Cancel lookup" Command="{Binding CancelLookupCommand}" Margin="8,0,0,0" Padding="12,6" />
                     </StackPanel>
                     <controls:OptionControl Header="Installed builds">
-                        <ComboBox Width="260" ItemsSource="{Binding CachedVersions}" SelectedItem="{Binding SelectedCachedVersion, Mode=TwoWay}" />
+                        <ComboBox Width="260" IsEnabled="{Binding CanEditVersion}" ItemsSource="{Binding CachedVersions}" SelectedItem="{Binding SelectedCachedVersion, Mode=TwoWay}" />
                     </controls:OptionControl>
                     <controls:OptionControl Header="Official version ID" Description="version- followed by 16 hexadecimal characters. Applies to Player only.">
-                        <TextBox Width="260" Padding="6,3" Text="{Binding VersionId, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBox Width="260" Padding="6,3" IsEnabled="{Binding CanEditVersion}" Text="{Binding VersionId, UpdateSourceTrigger=PropertyChanged}" />
                     </controls:OptionControl>
                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                         <ui:Button Content="Install / roll back" Command="{Binding InstallVersionCommand}" Padding="12,6" />

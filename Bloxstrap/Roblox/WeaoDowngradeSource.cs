@@ -15,11 +15,11 @@ namespace Bloxstrap.Roblox
             if (!RobloxVersionArchive.IsVersionId(version)) throw new InvalidDataException("WEAO RDD returned an invalid Windows Player version.");
             return version!.ToLowerInvariant();
         }
-        public static async Task<string> GetPreviousAsync()
+        public static async Task<string> GetPreviousAsync(CancellationToken token = default)
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15), MaxResponseContentBufferSize = 64 * 1024 };
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("WEAO-3PService DepthStrap/1.0.0");
-            return ParsePrevious(await client.GetStringAsync(PreviousApi));
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("WEAO-3PService DepthStrap/" + App.Version);
+            return ParsePrevious(await client.GetStringAsync(PreviousApi, token));
         }
         public static string DownloadLink(string? version) => Site + "?binaryType=WindowsPlayer&channel=LIVE" +
             (RobloxVersionArchive.IsVersionId(version) ? "&version=" + Uri.EscapeDataString(version!) : "");

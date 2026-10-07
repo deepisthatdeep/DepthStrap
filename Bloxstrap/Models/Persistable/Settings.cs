@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 
 namespace Bloxstrap.Models.Persistable
 {
-    public class Settings
+    public class Settings : IJsonNormalizable
     {
 
         // Integration Page
@@ -221,5 +221,29 @@ namespace Bloxstrap.Models.Persistable
         public string SelectedRegion { get; set; } = string.Empty;
         public bool ForceLocalData { get; set; } = false;
         public bool DebugDisableVersionPackageCleanup { get; set; } = false;
+
+        void IJsonNormalizable.Normalize()
+        {
+            var defaults = new Settings();
+            // JSON may explicitly contain null despite non-nullable property declarations.
+            foreach (var property in typeof(Settings).GetProperties())
+            {
+                var value = property.GetValue(this);
+                if (value is null && property.GetValue(defaults) is object fallback)
+                    property.SetValue(this, fallback);
+                else if (property.PropertyType.IsEnum && value is not null && !Enum.IsDefined(property.PropertyType, value))
+                    property.SetValue(this, property.GetValue(defaults));
+            }
+            CompetitiveFallbackCities = CompetitiveFallbackCities.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            CleanerDirectories = CleanerDirectories.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+            CustomIntegrations = new(CustomIntegrations.Where(x => x is not null));
+            CustomGradientStops = CustomGradientStops.Where(x => x is not null).ToList();
+            foreach (var stop in CustomGradientStops) stop.Color ??= "#000000";
+            foreach (var integration in CustomIntegrations)
+            {
+                integration.Name ??= ""; integration.Location ??= "";
+                integration.LaunchArgs ??= ""; integration.GameID ??= "";
+            }
+        }
     }
 }

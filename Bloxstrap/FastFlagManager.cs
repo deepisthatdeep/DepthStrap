@@ -194,8 +194,9 @@ namespace Bloxstrap
         {
             // convert all flag values to strings before saving
 
+            RemoveNullFlags();
             foreach (var pair in Prop)
-                Prop[pair.Key] = pair.Value!.ToString()!;
+                Prop[pair.Key] = pair.Value.ToString()!;
 
             base.Save();
 
@@ -206,6 +207,8 @@ namespace Bloxstrap
         public override bool Load(bool alertFailure = true)
         {
             bool result = base.Load(alertFailure);
+            if (!result) return false;
+            RemoveNullFlags();
 
             // clone the dictionary
             OriginalProp = new(Prop);
@@ -217,6 +220,13 @@ namespace Bloxstrap
             }
 
             return result;
+        }
+
+        private void RemoveNullFlags()
+        {
+            foreach (var pair in Prop.ToArray())
+                if (pair.Value is null || pair.Value is JsonElement { ValueKind: JsonValueKind.Null or JsonValueKind.Undefined })
+                    Prop.Remove(pair.Key);
         }
 
         public void DeleteProfile(string Profile)

@@ -104,7 +104,122 @@ internal static class SettingsChecks
         }
         check(AtomicFile.ReadText(knownPath) == knownSaved, "Failed cache reads preserve observed server metadata");
         CheckRobloxSettings(check);
+        CheckMalformedSettings(check);
+        CheckSharedQualityLock(check);
         App.Settings.Prop = new Settings();
+    }
+
+    private static void CheckMalformedSettings(Action<bool, string> check)
+    {
+        var manager = new JsonManager<Settings>("NullSettingsFixture");
+        string malformed = "{\"CompetitiveFallbackCities\":[null,\"\",\"Dallas\",\"dallas\"],\"CustomGradientStops\":null,\"CustomIntegrations\":[null],\"CleanerDirectories\":null,\"CompetitivePreferredCity\":null,\"Locale\":null,\"CompetitiveRunLabel\":null,\"Theme\":999,\"CompetitiveProcessPriority\":999}";
+        AtomicFile.WriteText(manager.FileLocation, malformed);
+        check(manager.Load(false) && manager.Prop.CompetitiveFallbackCities.SequenceEqual(new[] { "Dallas" }) &&
+            manager.Prop.CompetitivePreferredCity == "" && manager.Prop.CustomIntegrations.Count == 0 &&
+            manager.Prop.CustomGradientStops.Count == 3 && manager.Prop.CleanerDirectories.Count == 0 &&
+            manager.Prop.Locale == "nil" && manager.Prop.CompetitiveRunLabel == "",
+            "Explicit null settings and list entries recover usable defaults without breaking region or appearance controls");
+        check(manager.Prop.Theme == new Settings().Theme && manager.Prop.CompetitiveProcessPriority == new Settings().CompetitiveProcessPriority &&
+            File.ReadAllText(manager.FileLocation) == malformed,
+            "Unknown enum values recover defaults in memory without silently rewriting the user's file");
+        check(manager.TrySave() && new JsonManager<Settings>("NullSettingsFixture").Load(false),
+            "Recovered settings can be explicitly saved and loaded again");
+        var state = new JsonManager<State>("NullStateFixture");
+        AtomicFile.WriteText(state.FileLocation, "{\"SettingsWindow\":null,\"Mods\":[null,{\"FolderName\":null}]}");
+        check(state.Load(false) && state.Prop.SettingsWindow is not null && state.Prop.Mods.Count == 0,
+            "Null window state and invalid mod entries cannot crash settings or bootstrapper startup");
+        AtomicFile.WriteText(state.FileLocation, "{\"SettingsWindow\":{\"Width\":-1,\"Height\":-2,\"Left\":-200},\"Mods\":null}");
+        check(state.Load(false) && state.Prop.SettingsWindow is { Width: 0, Height: 0, Left: -200 },
+            "Invalid window sizes recover defaults while negative multi-monitor positions are preserved");
+        var appState = new JsonManager<AppState>("NullAppStateFixture");
+        AtomicFile.WriteText(appState.FileLocation, "{\"VersionGuid\":null,\"PackageHashes\":null}");
+        check(appState.Load(false) && appState.Prop.VersionGuid == "" && appState.Prop.PackageHashes.Count == 0,
+            "Null installed-version metadata recovers an empty verified package state");
+        string backup = Path.Combine(Paths.Cache, "CompetitiveSettingsBackup.json");
+        foreach (string invalid in new[] { "null", "{\"Global\":null}", "{\"Flags\":{\"Rendering.MSAA1\":null}}" })
+        {
+            AtomicFile.WriteText(backup, invalid);
+            check(!Bloxstrap.Roblox.CompetitiveSettingsBackup.Restore() && File.ReadAllText(backup) == invalid,
+                "An incomplete preset backup is retained instead of being treated as an empty successful restore");
+        }
+        File.Delete(backup);
+        var flags = new FastFlagManager();
+        string? original = File.Exists(flags.FileLocation) ? File.ReadAllText(flags.FileLocation) : null;
+        try
+        {
+            AtomicFile.WriteText(flags.FileLocation, "{\"FFlagNullFixture\":null,\"FIntFixture\":123}");
+            check(flags.Load(false) && !flags.Prop.ContainsKey("FFlagNullFixture") && flags.GetValue("FIntFixture") == "123",
+                "Null FastFlag values are treated as deleted while valid values remain available");
+            flags.Prop["FFlagNullFixture"] = null!;
+            flags.Save();
+            check(flags.LastSaveSucceeded && !flags.Prop.ContainsKey("FFlagNullFixture") && !File.ReadAllText(flags.FileLocation).Contains("null"),
+                "Saving a null FastFlag cannot crash or emit an invalid null flag value");
+            flags.SetValue("FIntFixture", "456");
+            File.WriteAllText(flags.FileLocation, "{broken");
+            check(!flags.Load(false) && flags.Changed && flags.GetValue("FIntFixture") == "456",
+                "A failed FastFlag reload preserves unsaved edits and their changed-state snapshot");
+        }
+        finally { if (original is null) File.Delete(flags.FileLocation); else AtomicFile.WriteText(flags.FileLocation, original); }
+    }
+
+    private static void CheckSharedQualityLock(Action<bool, string> check)
+    {
+        var globals = App.GlobalSettings;
+        string original = File.ReadAllText(globals.FileLocation);
+        var attributes = File.GetAttributes(globals.FileLocation);
+        var flags = new Dictionary<string, object>(App.FastFlags.Prop);
+        var settings = App.Settings.Prop;
+        var presence = Bloxstrap.Roblox.CompetitiveSettingsBackup.PlayerPresence;
+        int players = 0;
+        string backup = Path.Combine(Paths.Cache, "CompetitiveSettingsBackup.json");
+        try
+        {
+            Bloxstrap.Roblox.CompetitiveSettingsBackup.PlayerPresence = () => players > 0;
+            globals.Load();
+            string quality = globals.GetPreset("Rendering.SavedQualityLevel")!;
+            Bloxstrap.Roblox.CompetitiveSettingsBackup.SetGlobal("Rendering.SavedQualityLevel", "3");
+            globals.Save();
+            App.FastFlags.SetPreset("Rendering.MSAA1", "2");
+            Bloxstrap.Roblox.CompetitiveSettingsBackup.SetFlag("Rendering.MSAA1", "1");
+            App.FastFlags.Save();
+            Bloxstrap.Roblox.CompetitiveSettingsBackup.LockQuality();
+            string locked = File.ReadAllText(globals.FileLocation);
+            players = 2;
+            check(globals.TrySave() && globals.GetReadOnly() && File.ReadAllText(globals.FileLocation) == locked,
+                "An unchanged settings save leaves active clients' shared graphics file untouched and locked");
+            globals.SetPreset("Rendering.FramerateCap", 777);
+            check(!globals.TrySave() && globals.GetReadOnly() && File.ReadAllText(globals.FileLocation) == locked &&
+                !globals.TrySetReadOnly(false),
+                "Changed settings or a manual unlock cannot bypass the shared quality lock of active clients");
+            globals.Load();
+            check(Bloxstrap.Roblox.CompetitiveSettingsBackup.Restore() && globals.GetReadOnly() &&
+                File.ReadAllText(globals.FileLocation) == locked && App.FastFlags.GetPreset("Rendering.MSAA1") == "2" && File.Exists(backup),
+                "A second-client restore keeps the shared quality lock and original graphics backup while restoring launch-only flags");
+            App.Settings.Prop = new Settings { MatchFpsToMonitorRefreshRate = false, CompetitiveFpsCap = 360 };
+            Bloxstrap.Competitive.CompetitivePerformanceManager.ApplyPreLaunchSettings();
+            check(globals.GetReadOnly() && File.ReadAllText(globals.FileLocation) == locked,
+                "Launching another profile cannot temporarily unlock or rewrite shared graphics while a Player is active");
+            players = 1;
+            check(!Bloxstrap.Roblox.CompetitiveSettingsBackup.ReleaseQualityLock() && globals.GetReadOnly(),
+                "One client closing cannot release the final active client's quality lock");
+            players = 0;
+            check(Bloxstrap.Roblox.CompetitiveSettingsBackup.ReleaseQualityLock() && !globals.GetReadOnly() &&
+                Bloxstrap.Roblox.CompetitiveSettingsBackup.Restore() && globals.GetPreset("Rendering.SavedQualityLevel") == quality && !File.Exists(backup),
+                "After the last client exits, the original lock state and graphics preset are restored without losing the backup");
+        }
+        finally
+        {
+            players = 0;
+            Bloxstrap.Roblox.CompetitiveSettingsBackup.ReleaseQualityLock();
+            Bloxstrap.Roblox.CompetitiveSettingsBackup.Restore();
+            Bloxstrap.Roblox.CompetitiveSettingsBackup.PlayerPresence = presence;
+            globals.SetReadOnly(false);
+            AtomicFile.WriteText(globals.FileLocation, original);
+            File.SetAttributes(globals.FileLocation, attributes);
+            globals.Load();
+            App.FastFlags.Prop = flags; App.FastFlags.Save();
+            App.Settings.Prop = settings;
+        }
     }
 
     private static void CheckRobloxSettings(Action<bool, string> check)

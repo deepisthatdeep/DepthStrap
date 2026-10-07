@@ -286,15 +286,8 @@ namespace Bloxstrap
 
             _cancellationTokenSource.Cancel();
 
-            if (App.Settings.Prop.MultiInstanceLaunching)
-            {
-                App.Logger.WriteLine("Watcher::Dispose", "Starting multi-instance cleanup");
-                App.Bootstrapper?.CleanupMultiInstanceResources();
-            }
-
             CompetitiveMonitor?.Dispose();
-            if (!Process.GetProcessesByName("RobloxPlayerBeta").Any())
-                Roblox.CompetitiveSettingsBackup.ReleaseQualityLock();
+            Roblox.CompetitiveSettingsBackup.ReleaseQualityLock();
             NetworkMonitor?.Dispose();
             ActivityWatcher?.Dispose();
             IntegrationWatcher?.Dispose();

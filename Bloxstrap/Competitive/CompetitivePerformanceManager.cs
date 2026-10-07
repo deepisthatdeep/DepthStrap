@@ -374,6 +374,11 @@ namespace Bloxstrap.Competitive
 
             try
             {
+                if (CompetitiveSettingsBackup.IsQualityLockInUse())
+                {
+                    App.Logger.WriteLine(LOG_IDENT2, "Shared graphics settings remain locked for active clients; changes apply after all Players close.");
+                    return false;
+                }
                 App.GlobalSettings.Load();
                 if (App.GlobalSettings.LastLoadFailed) return false;
 

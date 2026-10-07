@@ -10,7 +10,13 @@ namespace Bloxstrap
         public virtual T Prop
         {
             get => _prop;
-            set { _prop = value; LastLoadFailed = false; }
+            set
+            {
+                ArgumentNullException.ThrowIfNull(value);
+                if (value is IJsonNormalizable normalizable) normalizable.Normalize();
+                _prop = value;
+                LastLoadFailed = false;
+            }
         }
 
         public string? LastFileHash { get; private set; }
@@ -52,6 +58,8 @@ namespace Bloxstrap
 
                     if (settings is null)
                         throw new ArgumentNullException("Deserialization returned null");
+
+                    if (settings is IJsonNormalizable normalizable) normalizable.Normalize();
 
                     _prop = settings;
                     Loaded = true;

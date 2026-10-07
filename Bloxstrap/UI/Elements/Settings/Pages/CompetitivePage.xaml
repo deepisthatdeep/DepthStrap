@@ -281,7 +281,7 @@
                     </StackPanel>
                 </controls:OptionControl>
 
-                <controls:OptionControl Header="Match monitor refresh rate" Description="Detects the highest supported refresh rate at your active monitors' current resolution on each launch. Applies in both Competitive and Balanced.">
+                <controls:OptionControl Header="Match monitor refresh rate" Description="Detects the highest supported refresh rate at your active monitors' current resolution. Applies in both profiles; shared graphics changes wait until all Roblox clients close.">
                     <ui:ToggleSwitch IsChecked="{Binding MatchMonitorRefresh, Mode=TwoWay}" />
                 </controls:OptionControl>
                 <controls:OptionControl Header="FPS Limit" Description="Roblox's real FramerateCap. Turn off monitor matching to enter a manual limit." >

@@ -639,8 +639,6 @@ namespace Bloxstrap
                 throw new InvalidOperationException("Multi-client setup did not become ready. Close all Roblox clients, then try again. Existing clients have been left open.");
         }
 
-        // The dedicated helper releases its own mutexes when the final Player exits.
-        public void CleanupMultiInstanceResources() { }
         private async void StartRoblox()
         {
             const string LOG_IDENT = "Bootstrapper::StartRoblox";
@@ -1291,6 +1289,8 @@ namespace Bloxstrap
 
             bool explicitVersion = App.LaunchSettings.VersionFlag.Active ||
                 (_launchMode == LaunchMode.Player && !string.IsNullOrWhiteSpace(App.Settings.Prop.RobloxPlayerVersionOverride));
+            if (explicitVersion && _launchMode == LaunchMode.Player && Roblox.CompetitiveSettingsBackup.PlayerPresence())
+                throw new InvalidOperationException("Close all Roblox clients before installing a pinned version. Existing clients have been left open.");
             bool CancelUpgrade = !App.Settings.Prop.UpdateRoblox && !explicitVersion && !App.LaunchSettings.ForceFlag.Active;
 
             if (CancelUpgrade)

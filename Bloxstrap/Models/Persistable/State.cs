@@ -1,6 +1,6 @@
 ﻿namespace Bloxstrap.Models.Persistable
 {
-    public class State
+    public class State : IJsonNormalizable
     {
         public bool TestModeWarningShown { get; set; } = false;
 
@@ -15,5 +15,16 @@
         public WindowState SettingsWindow { get; set; } = new();
 
         public List<ModConfig> Mods { get; set; } = new();
+
+        void IJsonNormalizable.Normalize()
+        {
+            SettingsWindow ??= new();
+            if (!double.IsFinite(SettingsWindow.Width) || SettingsWindow.Width < 0) SettingsWindow.Width = 0;
+            if (!double.IsFinite(SettingsWindow.Height) || SettingsWindow.Height < 0) SettingsWindow.Height = 0;
+            if (!double.IsFinite(SettingsWindow.Left)) SettingsWindow.Left = 0;
+            if (!double.IsFinite(SettingsWindow.Top)) SettingsWindow.Top = 0;
+            Mods = (Mods ?? new()).Where(x => x is not null && !string.IsNullOrWhiteSpace(x.FolderName)).ToList();
+            foreach (var mod in Mods) mod.Target ??= "Player";
+        }
     }
 }

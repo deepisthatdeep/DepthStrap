@@ -116,6 +116,8 @@ namespace Bloxstrap
 
             try
             {
+                using var presetGate = Roblox.CompetitiveSettingsBackup.Acquire();
+                if (!readOnly && Roblox.CompetitiveSettingsBackup.IsQualityLockInUse()) return false;
                 using var gate = Acquire();
                 FileAttributes attributes = File.GetAttributes(FileLocation);
 
@@ -213,6 +215,14 @@ namespace Bloxstrap
         {
             string xml = document.ToString();
             ParseDocument(xml);
+            // Keep one lock order: preset ownership, then XML, then atomic file access.
+            using var presetGate = Roblox.CompetitiveSettingsBackup.Acquire();
+            if (Roblox.CompetitiveSettingsBackup.IsQualityLockInUse())
+            {
+                var current = ParseDocument(AtomicFile.ReadText(FileLocation));
+                if (XNode.DeepEquals(document, current)) return;
+                throw new IOException("Shared Roblox graphics settings are locked for active clients. Close all Roblox clients before changing them.");
+            }
             using var gate = Acquire();
             FileAttributes? original = File.Exists(FileLocation) ? File.GetAttributes(FileLocation) : null;
             try

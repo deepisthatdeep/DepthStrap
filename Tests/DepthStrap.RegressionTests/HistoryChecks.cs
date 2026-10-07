@@ -89,7 +89,7 @@ internal static class HistoryChecks
         finally { if (original is null) File.Delete(path); else File.WriteAllText(path, original); }
     }
 
-    private static void Wait(Task task)
+    internal static void Wait(Task task)
     {
         var frame = new DispatcherFrame();
         var clock = Stopwatch.StartNew();

@@ -413,8 +413,7 @@ namespace Bloxstrap
                 }
                 State.Load();
                 FastFlags.Load();
-                if (!Process.GetProcessesByName("RobloxPlayerBeta").Any())
-                    Roblox.CompetitiveSettingsBackup.ReleaseQualityLock();
+                Roblox.CompetitiveSettingsBackup.ReleaseQualityLock();
                 GlobalSettings.Load();
 
                 // to fix error System.IO.IOException: No se encuentra el recurso 'ui/style/.xaml'.
