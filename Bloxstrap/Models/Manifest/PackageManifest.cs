@@ -19,6 +19,8 @@ namespace Bloxstrap.Models.Manifest
             while (true)
             {
                 string? fileName = reader.ReadLine();
+                if (fileName is null) break;
+                if (fileName.Length == 0 && string.IsNullOrWhiteSpace(reader.ReadToEnd())) break;
                 string? signature = reader.ReadLine();
 
                 string? rawPackedSize = reader.ReadLine();
@@ -28,23 +30,26 @@ namespace Bloxstrap.Models.Manifest
                     string.IsNullOrEmpty(signature) ||
                     string.IsNullOrEmpty(rawPackedSize) ||
                     string.IsNullOrEmpty(rawSize))
-                    break;
+                    throw new InvalidDataException("The Roblox package manifest is truncated.");
 
-                // ignore launcher
-                if (fileName == "RobloxPlayerLauncher.exe")
-                    break;
+                if (!int.TryParse(rawPackedSize, out int packedSize) || !int.TryParse(rawSize, out int size))
+                    throw new InvalidDataException("The Roblox package manifest contains an invalid size.");
 
-                int packedSize = int.Parse(rawPackedSize);
-                int size = int.Parse(rawSize);
-
-                Add(new Package
+                var package = new Package
                 {
                     Name = fileName,
                     Signature = signature,
                     PackedSize = packedSize,
                     Size = size
-                });
+                };
+                package.Validate();
+                // The launcher is not installed; later manifest entries still need processing.
+                if (fileName == "RobloxPlayerLauncher.exe") continue;
+                if (this.Any(x => string.Equals(x.Name, package.Name, StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidDataException("The Roblox package manifest contains duplicate names.");
+                Add(package);
             }
+            if (Count == 0) throw new InvalidDataException("The Roblox package manifest contains no installable packages.");
         }
     }
 }

@@ -109,6 +109,7 @@ internal static class Program
         FeatureChecks.Run(Check);
         SettingsChecks.Run(Check);
         VersionChecks.Run(Check);
+        InstallerChecks.Run(Check);
         ServerBrowserChecks.Run(Check);
         if (args.Contains("--verify-public-network")) ServerBrowserChecks.VerifyPublicNetwork(Check);
         WatcherChecks.Run(Check);

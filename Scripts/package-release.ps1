@@ -1,4 +1,4 @@
-param([ValidatePattern('\A\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?\z')][string]$Version = '1.0.6')
+param([ValidatePattern('\A\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?\z')][string]$Version = '1.0.7')
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $artifactRoot = Join-Path $projectRoot 'artifacts'

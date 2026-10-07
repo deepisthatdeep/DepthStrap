@@ -60,8 +60,6 @@ namespace Bloxstrap.UI.ViewModels.Settings
 
         private bool TrySaveSettings()
         {
-            const string LOG_IDENT = "MainWindowViewModel::SaveSettings";
-
             try { Networking.AdaptiveRegionService.SaveUserSettings(); }
             catch (IOException ex)
             {
@@ -79,18 +77,11 @@ namespace Bloxstrap.UI.ViewModels.Settings
                 return false;
             }
 
-            foreach (var pair in App.PendingSettingTasks)
+            if (!PendingSettingsExecutor.TryExecute(out string? failedTask))
             {
-                var task = pair.Value;
-
-                if (task.Changed)
-                {
-                    App.Logger.WriteLine(LOG_IDENT, $"Executing pending task '{task}'");
-                    task.Execute();
-                }
+                Frontend.ShowMessageBox($"Could not finish applying setting '{failedTask}'. Completed changes were kept. Remaining changes stay queued; correct any reported problem and retry Save.", MessageBoxImage.Warning);
+                return false;
             }
-
-            App.PendingSettingTasks.Clear();
 
             RequestSaveNoticeEvent?.Invoke(this, EventArgs.Empty);
             return true;

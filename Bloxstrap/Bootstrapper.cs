@@ -1847,7 +1847,7 @@ namespace Bloxstrap
             string LOG_IDENT = $"Bootstrapper::DownloadPackage.{package.Name}";
 
             if (_cancelTokenSource.IsCancellationRequested)
-                return;
+                _cancelTokenSource.Token.ThrowIfCancellationRequested();
 
             Directory.CreateDirectory(Paths.Downloads);
 
@@ -1860,7 +1860,7 @@ namespace Bloxstrap
 
                 string calculatedMD5 = MD5Hash.FromFile(package.DownloadPath);
 
-                if (calculatedMD5 != package.Signature)
+                if (file.Length != package.PackedSize || !string.Equals(calculatedMD5, package.Signature, StringComparison.OrdinalIgnoreCase))
                 {
                     App.Logger.WriteLine(LOG_IDENT, $"Package is corrupted ({calculatedMD5} != {package.Signature})! Deleting and re-downloading...");
                     file.Delete();
@@ -1875,115 +1875,52 @@ namespace Bloxstrap
                     return;
                 }
             }
-            else if (File.Exists(robloxPackageLocation))
+            if (await VerifiedPackageCache.TryCopyAsync(robloxPackageLocation, package, _cancelTokenSource.Token))
             {
                 // let's cheat! if the stock bootstrapper already previously downloaded the file,
                 // then we can just copy the one from there
 
                 App.Logger.WriteLine(LOG_IDENT, $"Found existing copy at '{robloxPackageLocation}'! Copying to Downloads folder...");
-                File.Copy(robloxPackageLocation, package.DownloadPath);
-
                 _totalDownloadedBytes += package.PackedSize;
                 UpdateProgressBar();
 
                 return;
             }
 
-            if (File.Exists(package.DownloadPath))
-                return;
-
             const int maxTries = 5;
-
             App.Logger.WriteLine(LOG_IDENT, "Downloading...");
-
-            var buffer = new byte[4096];
-
             for (int i = 1; i <= maxTries; i++)
             {
-                if (_cancelTokenSource.IsCancellationRequested)
-                    return;
-
+                _cancelTokenSource.Token.ThrowIfCancellationRequested();
                 int totalBytesRead = 0;
-
                 try
                 {
-                    var response = await App.HttpClient.GetAsync(packageUrl, HttpCompletionOption.ResponseHeadersRead, _cancelTokenSource.Token);
-                    await using var stream = await response.Content.ReadAsStreamAsync(_cancelTokenSource.Token);
-                    await using var fileStream = new FileStream(package.DownloadPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Delete);
-
-                    while (true)
+                    await VerifiedPackageCache.DownloadAsync(App.HttpClient, packageUrl, package, _cancelTokenSource.Token, count =>
                     {
-                        if (_cancelTokenSource.IsCancellationRequested)
-                        {
-                            stream.Close();
-                            fileStream.Close();
-                            return;
-                        }
-
-                        int bytesRead = await stream.ReadAsync(buffer, _cancelTokenSource.Token);
-
-                        if (bytesRead == 0)
-                            break;
-
-                        totalBytesRead += bytesRead;
-
-                        await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), _cancelTokenSource.Token);
-
-                        _totalDownloadedBytes += bytesRead;
-                        SetStatus(
-                            String.Format(App.Settings.Prop.DownloadingStringFormat,
-                            package.Name,
-                            totalBytesRead / 1048576,
-                            package.Size / 1048576
-                            ));
+                        totalBytesRead += count;
+                        _totalDownloadedBytes += count;
+                        SetStatus(string.Format(App.Settings.Prop.DownloadingStringFormat,
+                            package.Name, totalBytesRead / 1048576, package.PackedSize / 1048576));
                         UpdateProgressBar();
-                    }
-
-                    string hash = MD5Hash.FromStream(fileStream);
-
-                    if (hash != package.Signature)
-                        throw new ChecksumFailedException($"Failed to verify download of {packageUrl}\n\nExpected hash: {package.Signature}\nGot hash: {hash}");
-
+                    });
                     App.Logger.WriteLine(LOG_IDENT, $"Finished downloading! ({totalBytesRead} bytes total)");
-                    break;
+                    return;
+                }
+                catch (OperationCanceledException) when (_cancelTokenSource.IsCancellationRequested)
+                {
+                    _totalDownloadedBytes -= totalBytesRead;
+                    throw;
                 }
                 catch (Exception ex)
                 {
-                    App.Logger.WriteLine(LOG_IDENT, $"An exception occurred after downloading {totalBytesRead} bytes. ({i}/{maxTries})");
-                    App.Logger.WriteException(LOG_IDENT, ex);
-
-                    if (ex.GetType() == typeof(ChecksumFailedException))
-                    {
-                        Frontend.ShowConnectivityDialog(
-                            Strings.Dialog_Connectivity_UnableToDownload,
-                            String.Format(Strings.Dialog_Connectivity_UnableToDownloadReason, "[https://github.com/bloxstraplabs/bloxstrap/wiki/Bloxstrap-is-unable-to-download-Roblox](https://github.com/bloxstraplabs/bloxstrap/wiki/Bloxstrap-is-unable-to-download-Roblox)"),
-                            MessageBoxImage.Error,
-                            ex
-                        );
-
-                        App.Terminate(ErrorCode.ERROR_CANCELLED);
-                    }
-                    else if (i >= maxTries)
-                        throw;
-
-                    if (File.Exists(package.DownloadPath))
-                        File.Delete(package.DownloadPath);
-
                     _totalDownloadedBytes -= totalBytesRead;
                     UpdateProgressBar();
-
-                    // attempt download over HTTP
-                    // this isn't actually that unsafe - signatures were fetched earlier over HTTPS
-                    // so we've already established that our signatures are legit, and that there's very likely no MITM anyway
-                    if (ex.GetType() == typeof(IOException) && !packageUrl.StartsWith("http://"))
-                    {
-                        App.Logger.WriteLine(LOG_IDENT, "Retrying download over HTTP...");
-                        packageUrl = packageUrl.Replace("https://", "http://");
-                    }
+                    App.Logger.WriteLine(LOG_IDENT, $"An exception occurred after downloading {totalBytesRead} bytes. ({i}/{maxTries})");
+                    App.Logger.WriteException(LOG_IDENT, ex);
+                    if (i >= maxTries) throw;
                 }
             }
         }
-
         private void ExtractPackage(Package package, List<string>? files = null)
         {
             const string LOG_IDENT = "Bootstrapper::ExtractPackage";
@@ -2005,7 +1942,7 @@ namespace Bloxstrap
                 var regexList = new List<string>();
 
                 foreach (string file in files)
-                    regexList.Add("^" + file.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)") + "$");
+                    regexList.Add("^" + Regex.Escape(file) + "$");
 
                 fileFilter = String.Join(';', regexList);
             }
