@@ -75,22 +75,9 @@ namespace Bloxstrap.UI.ViewModels.Settings
                     string fontPath = dialog.FileName;
                     try
                     {
-                        var fontFamily = FontManager.LoadFontFromFile(fontPath);
-                        if (fontFamily is null) throw new InvalidDataException("This file does not contain a usable font family.");
-                        if (fontFamily != null)
-                        {
-                            string stored = Roblox.AppearanceFont.Store(fontPath);
-                            FontManager.ApplyFontGlobally(fontFamily);
-                            App.Settings.Prop.CustomFontPath = stored;
-                            Networking.AdaptiveRegionService.SaveUserSettings();
-
-                            UpdateFontVisibility();
-
-                            foreach (Window window in Application.Current.Windows)
-                            {
-                                window.FontFamily = fontFamily;
-                            }
-                        }
+                        string stored = Roblox.AppearanceFont.Store(fontPath);
+                        FontManager.SetCustomFont(stored);
+                        UpdateFontVisibility();
                     }
                     catch (Exception ex)
                     {
@@ -100,31 +87,20 @@ namespace Bloxstrap.UI.ViewModels.Settings
             }
             else if (action == "Remove")
             {
-                FontManager.RemoveCustomFont();
-                UpdateFontVisibility();
-
-                var defaultFont = new System.Windows.Media.FontFamily("Segoe UI");
-                foreach (Window window in Application.Current.Windows)
+                try
                 {
-                    window.FontFamily = defaultFont;
+                    FontManager.RemoveCustomFont();
+                    UpdateFontVisibility();
                 }
+                catch (Exception ex)
+                { MessageBox.Show($"Failed to reset font: {ex.Message}", "Font Error", MessageBoxButton.OK, MessageBoxImage.Error); }
             }
         }
 
         public void ApplySavedCustomFont()
         {
-            bool applied = FontManager.ApplySavedCustomFont();
+            FontManager.ApplySavedCustomFont();
             UpdateFontVisibility();
-
-            if (applied)
-            {
-                var fontFamily = FontManager.LoadFontFromFile(App.Settings.Prop.CustomFontPath!);
-                if (fontFamily != null)
-                {
-                    foreach (Window window in Application.Current.Windows)
-                        window.FontFamily = fontFamily;
-                }
-            }
         }
 
         private void BrowseCustomIconLocation()

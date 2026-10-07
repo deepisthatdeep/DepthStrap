@@ -106,14 +106,16 @@ namespace Bloxstrap
         {
             if (_isDisposed || ActivityWatcher is null || _watcherData is null) return false;
             var classification = CompetitiveRegionService.Classify(result.Location, source: result.RegionSource);
-            if (!BadRegionAutoLog.ShouldLeave(result, App.Settings.Prop, ActivityWatcher.Data.JobId, DateTime.Now, classification, _watcherData.AutoLogRecovery)) return false;
+            if (!BadRegionAutoLog.ShouldLeave(result, App.Settings.Prop, ActivityWatcher.Data.JobId, DateTime.Now, classification,
+                _watcherData.AutoLogRecovery, ActivityWatcher.Data.TimeJoined)) return false;
             // Preserve the measurements and reason before this client's monitor stops.
             await CompetitiveSessionLogger.WriteNetworkEventAsync(result, CancellationToken.None);
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
             {
                 if (_isDisposed || !ActivityWatcher.InGame || ActivityWatcher.Data.UniverseId != CompetitiveRegionService.DeepwokenUniverseId ||
                     !BadRegionAutoLog.ShouldLeave(result, App.Settings.Prop, ActivityWatcher.Data.JobId, DateTime.Now,
-                        CompetitiveRegionService.Classify(result.Location, source: result.RegionSource), _watcherData.AutoLogRecovery)) return;
+                        CompetitiveRegionService.Classify(result.Location, source: result.RegionSource), _watcherData.AutoLogRecovery,
+                        ActivityWatcher.Data.TimeJoined)) return;
                 Process? player = null;
                 TaskCompletionSource? completed = null;
                 try

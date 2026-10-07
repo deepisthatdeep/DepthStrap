@@ -2,8 +2,19 @@ namespace Bloxstrap.Utility
 {
     internal static class AtomicFile
     {
+        private static InterProcessLock Lock(string path)
+        {
+            string identity = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                Encoding.UTF8.GetBytes(Path.GetFullPath(path).ToUpperInvariant())));
+            var gate = new InterProcessLock("AtomicFile-" + identity, TimeSpan.FromSeconds(2));
+            if (gate.IsAcquired) return gate;
+            gate.Dispose();
+            throw new IOException("The data file is busy; retry this operation.");
+        }
+
         internal static string ReadText(string path)
         {
+            using var gate = Lock(path);
             for (int attempt = 0; ; attempt++)
             {
                 try
@@ -21,6 +32,7 @@ namespace Bloxstrap.Utility
 
         internal static void WriteText(string path, string contents)
         {
+            using var gate = Lock(path);
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
             string temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try

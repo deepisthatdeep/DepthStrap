@@ -38,7 +38,7 @@ internal static class FeatureChecks
             "Autolog independently starts its required watcher without other monitoring toggles");
         string fontFixture = Path.Combine(Paths.Cache, "font-fixture.ttf");
         Directory.CreateDirectory(Paths.Cache);
-        File.WriteAllBytes(fontFixture, new byte[] { 0, 1, 0, 0, 1, 2, 3, 4 });
+        File.Copy("Bloxstrap/Resources/Fonts/Rubik-VariableFont_wght.ttf", fontFixture, true);
         string storedFont = AppearanceFont.Store(fontFixture);
         File.Delete(fontFixture);
         check(File.Exists(storedFont), "Appearance keeps its own font copy when the selected download is removed");
@@ -60,6 +60,48 @@ internal static class FeatureChecks
         bool rejectedFont = false;
         try { AppearanceFont.Store(badFont); } catch (InvalidDataException) { rejectedFont = true; }
         check(rejectedFont, "Invalid custom fonts cannot enter Roblox's font patch");
+        string truncatedFont = Path.Combine(Paths.Cache, "truncated-font.ttf");
+        File.WriteAllBytes(truncatedFont, new byte[] { 0, 1, 0, 0, 1, 2, 3, 4 });
+        bool rejectedTruncated = false;
+        try { AppearanceFont.Store(truncatedFont); } catch (InvalidDataException) { rejectedTruncated = true; }
+        check(rejectedTruncated, "A TrueType header alone cannot make a truncated file valid");
+        string damagedFont = Path.Combine(Paths.Cache, "damaged-font.ttf");
+        File.WriteAllBytes(damagedFont, new byte[256]);
+        using (var file = File.OpenWrite(damagedFont)) file.Write(new byte[] { 0, 1, 0, 0 });
+        bool rejectedDamaged = false;
+        try { AppearanceFont.Store(damagedFont); } catch (InvalidDataException) { rejectedDamaged = true; }
+        check(rejectedDamaged, "A longer file with a correct signature but no font tables is rejected");
+        var appFamily = FontManager.LoadFontFromFile(storedFont)!;
+        check(appFamily.GetTypefaces().Any(x => x.TryGetGlyphTypeface(out var glyph) && glyph.CharacterToGlyphMap.ContainsKey('A')),
+            "The retained font resolves real app glyphs after its original download is deleted");
+        File.WriteAllText(Path.Combine(families, "Empty.json"), "{\"faces\":[]}");
+        File.WriteAllText(Path.Combine(families, "Malformed.json"), "[]");
+        File.WriteAllText(Path.Combine(families, "Broken.json"), "{broken");
+        check(AppearanceFont.CreateFiles(fontBuild, storedFont, new Dictionary<string, string>()).Count == 2,
+            "Malformed or empty families do not prevent valid Roblox font families from being patched");
+        string emptyBuild = Path.Combine(Paths.Cache, "empty-font-build");
+        Directory.CreateDirectory(Path.Combine(emptyBuild, "content", "fonts", "families"));
+        check(AppearanceFont.CreateFiles(emptyBuild, storedFont, new Dictionary<string, string>()).Count == 0,
+            "No unused custom font asset is installed when the Roblox build contains no usable family");
+        var fontSettings = App.Settings.Prop;
+        App.Settings.Prop = new Settings();
+        FontManager.SetCustomFont(storedFont);
+        string savedSettings = File.ReadAllText(App.Settings.FileLocation);
+        var settingsAttributes = File.GetAttributes(App.Settings.FileLocation);
+        bool rejectedReset = false;
+        try
+        {
+            File.SetAttributes(App.Settings.FileLocation, settingsAttributes | FileAttributes.ReadOnly);
+            try { FontManager.RemoveCustomFont(); } catch (IOException) { rejectedReset = true; }
+            check(rejectedReset && App.Settings.Prop.CustomFontPath == storedFont && FontManager.IsCustomFontApplied &&
+                File.ReadAllText(App.Settings.FileLocation) == savedSettings,
+                "Failed font reset retains the applied font and original saved setting");
+        }
+        finally { File.SetAttributes(App.Settings.FileLocation, settingsAttributes); }
+        FontManager.RemoveCustomFont();
+        check(App.Settings.Prop.CustomFontPath is null && !FontManager.IsCustomFontApplied,
+            "Successful font reset restores the app default and removes the next-launch Roblox override");
+        App.Settings.Prop = fontSettings;
         check(settings.PauseRobloxUpdates && settings.AutomaticRegionalPreference && settings.CompetitivePreferredCity.Length == 0 && settings.CompetitiveFallbackCities.Count == 0,
             "Fresh installs pause updates and learn regions without a seeded city");
         new NetworkTestResult { DirectCountry = "GB" }.Apply(settings);
@@ -168,6 +210,16 @@ internal static class FeatureChecks
               !BadRegionAutoLog.ShouldLeave(joined with { RegionSource = "Unknown" }, autolog, "current", DateTime.Now, outside), "Unknown locations never trigger autolog");
         check(!BadRegionAutoLog.ShouldLeave(joined, autolog, "new-job", DateTime.Now, outside) &&
               !BadRegionAutoLog.ShouldLeave(joined with { Timestamp = DateTime.Now.AddMinutes(-2) }, autolog, "current", DateTime.Now, outside), "Old jobs and stale diagnostics cannot close the current session");
+        DateTime decisionTime = DateTime.Now;
+        var delayed = joined with { Timestamp = decisionTime.AddMinutes(-2) };
+        check(BadRegionAutoLog.ShouldLeave(delayed, autolog, "current", decisionTime, outside,
+                currentJoinStartedAt: decisionTime.AddMinutes(-3)),
+            "A slow region lookup can autolog while its confirmed original join is still active");
+        check(!BadRegionAutoLog.ShouldLeave(delayed, autolog, "current", decisionTime, outside,
+                currentJoinStartedAt: decisionTime.AddMinutes(-1)) &&
+              !BadRegionAutoLog.ShouldLeave(delayed, autolog, "current", decisionTime, outside, true,
+                decisionTime.AddMinutes(-3)),
+            "A delayed result from a previous join or recovery client cannot close the current game");
         check(!BadRegionAutoLog.ShouldLeave(joined with { IsDeepwoken = false, UniverseId = 123 }, autolog, "current", DateTime.Now, outside) &&
               !BadRegionAutoLog.ShouldRejoin(joined with { UniverseId = 123 }, autolog), "Another game's bad server can neither autolog nor launch Deepwoken");
         check(new long[] { 999002, 999003, 999004, 999005 }.All(id =>

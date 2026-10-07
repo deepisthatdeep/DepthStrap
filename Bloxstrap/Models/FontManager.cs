@@ -11,18 +11,12 @@ namespace Bloxstrap.Models
             if (!File.Exists(fontFilePath))
                 return null;
 
-            string tempFontsRoot = Path.Combine(Path.GetTempPath(), "DepthStrap", "Fonts");
-
-            string uniqueFontFolder = Path.Combine(tempFontsRoot, Guid.NewGuid().ToString());
-            Directory.CreateDirectory(uniqueFontFolder);
-
-            string destFontPath = Path.Combine(uniqueFontFolder, Path.GetFileName(fontFilePath));
-            File.Copy(fontFilePath, destFontPath, overwrite: true);
-
-            var fontDirectoryUri = new Uri(uniqueFontFolder + Path.DirectorySeparatorChar);
-            var fontFamilies = System.Windows.Media.Fonts.GetFontFamilies(fontDirectoryUri);
-
-            return fontFamilies.FirstOrDefault();
+            string path = Path.GetFullPath(fontFilePath);
+            var face = Roblox.AppearanceFont.LoadFace(path);
+            var directory = new Uri(Path.GetDirectoryName(path)! + Path.DirectorySeparatorChar);
+            string familyName = face.FamilyNames.Values.First();
+            return new System.Windows.Media.FontFamily(directory,
+                "./" + Uri.EscapeDataString(Path.GetFileName(path)) + "#" + familyName);
         }
 
         public static bool ApplySavedCustomFont()
@@ -60,13 +54,17 @@ namespace Bloxstrap.Models
             IsCustomFontApplied = fontFamily.Source != "Segoe UI";
         }
 
-        public static void RemoveCustomFont()
+        internal static void SetCustomFont(string? path)
         {
-            var defaultFont = new System.Windows.Media.FontFamily("Segoe UI");
-            ApplyFontGlobally(defaultFont);
-            IsCustomFontApplied = false;
-            App.Settings.Prop.CustomFontPath = null;
-            Networking.AdaptiveRegionService.SaveUserSettings();
+            var font = path is null ? new System.Windows.Media.FontFamily("Segoe UI") :
+                LoadFontFromFile(path) ?? throw new InvalidDataException("The selected font is unavailable.");
+            string? previous = App.Settings.Prop.CustomFontPath;
+            App.Settings.Prop.CustomFontPath = path;
+            try { Networking.AdaptiveRegionService.SaveUserSettings(); }
+            catch { App.Settings.Prop.CustomFontPath = previous; throw; }
+            ApplyFontGlobally(font);
         }
+
+        public static void RemoveCustomFont() => SetCustomFont(null);
     }
 }
