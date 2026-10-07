@@ -17,6 +17,14 @@ internal static class VersionChecks
         int starts = 0, changes = 0;
         try
         {
+            var installer = RobloxVersionArchiveViewModel.InstallerStartInfo();
+            var installerArgs = new LaunchSettings(installer.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            check(installerArgs.NoLaunchFlag.Active && installerArgs.ForceFlag.Active &&
+                installerArgs.RobloxLaunchMode == Bloxstrap.Enums.LaunchMode.Player && !installer.UseShellExecute,
+                "Version installation uses install-only Player arguments and cannot implicitly launch Roblox");
+            check(RobloxUpdatePolicy.RequestedVersion(true, null, new Settings { PauseRobloxUpdates = true }, target,
+                installedExecutableExists: false, installationPending: true) == target,
+                "Repairing an interrupted paused installation retains the selected Roblox build even when its executable is missing");
             CompetitiveSettingsBackup.PlayerPresence = () => false;
             App.Settings.Prop = new Settings { RobloxPlayerVersionOverride = previous, PauseRobloxUpdates = false,
                 UpdateRoblox = false, StaticDirectory = true };

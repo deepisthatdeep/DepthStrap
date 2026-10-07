@@ -8,6 +8,8 @@
 
         public int Size { get; set; }
 
+        public bool InstallationPending { get; set; }
+
         public Dictionary<string, ModFileEntry> ModManifest { get; set; } = new();
     }
 }

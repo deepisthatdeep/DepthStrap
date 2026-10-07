@@ -295,11 +295,12 @@ namespace Bloxstrap
                 dialog.Bootstrapper = App.Bootstrapper;
             }
 
-            Task.Run(App.Bootstrapper.Run).ContinueWith(t =>
+            Task.Run(App.Bootstrapper.Run).ContinueWith(async t =>
             {
+                await App.Bootstrapper.CancellationCompletion;
                 App.Logger.WriteLine(LOG_IDENT, "Bootstrapper task has finished");
 
-                if (t.IsFaulted)
+                if (t.IsFaulted && !App.Bootstrapper.CancellationRequested)
                 {
                     App.Logger.WriteLine(LOG_IDENT, "An exception occurred when running the bootstrapper");
 
@@ -472,12 +473,13 @@ namespace Bloxstrap
                 App.Bootstrapper.Cancel();
             }, cts.Token);
 
-            Task.Run(App.Bootstrapper.Run).ContinueWith(t =>
+            Task.Run(App.Bootstrapper.Run).ContinueWith(async t =>
             {
+                await App.Bootstrapper.CancellationCompletion;
                 App.Logger.WriteLine(LOG_IDENT, "Bootstrapper task has finished");
                 cts.Cancel(); // stop event waiter
 
-                if (t.IsFaulted)
+                if (t.IsFaulted && !App.Bootstrapper.CancellationRequested)
                 {
                     App.Logger.WriteLine(LOG_IDENT, "An exception occurred when running the bootstrapper");
 

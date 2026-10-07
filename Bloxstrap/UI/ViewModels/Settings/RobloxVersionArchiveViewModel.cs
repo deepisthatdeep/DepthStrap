@@ -138,9 +138,11 @@ namespace Bloxstrap.UI.ViewModels.Settings
             OnPropertyChanged(nameof(SelectedCachedVersion));
         }
 
+        internal static ProcessStartInfo InstallerStartInfo() => new(Paths.Application, "-player -force -nolaunch") { UseShellExecute = false };
+
         private static async Task<int> RunInstallerAsync()
         {
-            using var installer = Process.Start(new ProcessStartInfo(Paths.Application, "-player -force") { UseShellExecute = false });
+            using var installer = Process.Start(InstallerStartInfo());
             if (installer is null) throw new IOException("The Roblox installer could not be started.");
             await installer.WaitForExitAsync();
             return installer.ExitCode;

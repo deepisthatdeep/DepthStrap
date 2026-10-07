@@ -60,13 +60,18 @@ namespace Bloxstrap
         public static bool _staticDirectory => App.Settings.Prop.StaticDirectory;
 
         private bool _isInstalling = false;
+        private Task? _installationTask;
+        private readonly object _cancelSync = new();
+        private TaskCompletionSource? _cancelCompletion;
+        internal Task CancellationCompletion => Volatile.Read(ref _cancelCompletion)?.Task ?? Task.CompletedTask;
+        internal bool CancellationRequested => _cancelTokenSource.IsCancellationRequested;
         private double _progressIncrement;
         private double _taskbarProgressIncrement;
         private double _taskbarProgressMaximum;
         private long _totalDownloadedBytes = 0;
         private bool _packageExtractionSuccess = true;
 
-        private bool _mustUpgrade => App.LaunchSettings.ForceFlag.Active || App.State.Prop.ForceReinstall || String.IsNullOrEmpty(AppData.DistributionState.VersionGuid) || !File.Exists(AppData.ExecutablePath);
+        private bool _mustUpgrade => App.LaunchSettings.ForceFlag.Active || App.State.Prop.ForceReinstall || AppData.DistributionState.InstallationPending || String.IsNullOrEmpty(AppData.DistributionState.VersionGuid) || !File.Exists(AppData.ExecutablePath);
 
         private bool _noConnection = false;
 
@@ -322,7 +327,7 @@ namespace Bloxstrap
             if (_launchMode != LaunchMode.Player)
                 await mutex.ReleaseAsync();
 
-            if (_launchMode == LaunchMode.Player)
+            if (_launchMode == LaunchMode.Player && !App.LaunchSettings.NoLaunchFlag.Active)
             {
                 // await because some peoples pc are so ass that roblox opens before this finishes causing an error due to the event
                 if (App.Settings.Prop.MultiInstanceLaunching)
@@ -454,7 +459,7 @@ namespace Bloxstrap
 
             string? requestedVersion = Roblox.RobloxUpdatePolicy.RequestedVersion(_launchMode == LaunchMode.Player,
                 App.LaunchSettings.VersionFlag.Active ? App.LaunchSettings.VersionFlag.Data : null,
-                App.Settings.Prop, AppData.DistributionState.VersionGuid, File.Exists(AppData.ExecutablePath));
+                App.Settings.Prop, AppData.DistributionState.VersionGuid, File.Exists(AppData.ExecutablePath), AppData.DistributionState.InstallationPending);
             if (!string.IsNullOrWhiteSpace(requestedVersion) && !Roblox.RobloxVersionArchive.IsVersionId(requestedVersion))
                 throw new InvalidDataException("Invalid Roblox version ID. Use version- followed by 16 hexadecimal characters.");
 
@@ -929,6 +934,29 @@ namespace Bloxstrap
 
         public void Cancel()
         {
+            TaskCompletionSource completion;
+            lock (_cancelSync)
+            {
+                if (_cancelCompletion is not null) return;
+                completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                _cancelCompletion = completion;
+            }
+            _ = CompleteCancellationAsync(completion);
+        }
+
+        private async Task CompleteCancellationAsync(TaskCompletionSource completion)
+        {
+            try { await CancelCoreAsync(); }
+            catch (Exception ex)
+            {
+                App.Logger.WriteException("Bootstrapper::Cancel", ex);
+                App.SoftTerminate(ErrorCode.ERROR_CANCELLED);
+            }
+            finally { completion.TrySetResult(); }
+        }
+
+        private async Task CancelCoreAsync()
+        {
             const string LOG_IDENT = "Bootstrapper::Cancel";
 
             if (_cancelTokenSource.IsCancellationRequested)
@@ -943,8 +971,14 @@ namespace Bloxstrap
 
             if (_isInstalling)
             {
+                if (_installationTask is { } installation)
+                {
+                    try { await installation; }
+                    catch (Exception ex) { App.Logger.WriteException(LOG_IDENT, ex); }
+                }
                 try
                 {
+                    InstallPackagePipeline.BeginRecovery(AppData.DistributionStateManager);
                     // clean up registry keys
                     WindowsRegistry.RegisterClientLocation(IsStudioLaunch, null);
 
@@ -1283,6 +1317,14 @@ namespace Bloxstrap
 
         private async Task UpgradeRoblox()
         {
+            var installation = UpgradeRobloxCore();
+            _installationTask = installation;
+            try { await installation; }
+            finally { _installationTask = null; }
+        }
+
+        private async Task UpgradeRobloxCore()
+        {
             const string LOG_IDENT = "Bootstrapper::UpgradeRoblox";
             if (App.LaunchSettings.AutoLogHomeFlag.Active)
                 throw new InvalidOperationException("Autolog stopped because the installed Roblox build changed. Launch Roblox manually; other clients have been preserved.");
@@ -1291,7 +1333,7 @@ namespace Bloxstrap
                 (_launchMode == LaunchMode.Player && !string.IsNullOrWhiteSpace(App.Settings.Prop.RobloxPlayerVersionOverride));
             if (explicitVersion && _launchMode == LaunchMode.Player && Roblox.CompetitiveSettingsBackup.PlayerPresence())
                 throw new InvalidOperationException("Close all Roblox clients before installing a pinned version. Existing clients have been left open.");
-            bool CancelUpgrade = !App.Settings.Prop.UpdateRoblox && !explicitVersion && !App.LaunchSettings.ForceFlag.Active;
+            bool CancelUpgrade = !App.Settings.Prop.UpdateRoblox && !explicitVersion && !App.LaunchSettings.ForceFlag.Active && !AppData.DistributionState.InstallationPending;
 
             if (CancelUpgrade)
             {
@@ -1318,6 +1360,15 @@ namespace Bloxstrap
             Directory.CreateDirectory(Paths.Downloads);
             Directory.CreateDirectory(Paths.Versions);
 
+            // Reserve the staged download and extraction footprint before touching the installed build.
+            long totalSizeRequired = InstallPackagePipeline.RequiredFreeBytes(_versionPackageManifest, InstallPackagePipeline.CachedSize);
+            if (Filesystem.GetFreeDiskSpace(Paths.Base) < totalSizeRequired)
+            {
+                Frontend.ShowMessageBox(Strings.Bootstrapper_NotEnoughSpace, MessageBoxImage.Error);
+                throw new IOException("There is not enough free space to install this Roblox build. The existing build was preserved.");
+            }
+
+            InstallPackagePipeline.BeginRecovery(AppData.DistributionStateManager);
             _isInstalling = true;
 
             // make sure nothing is running before continuing upgrade
@@ -1335,26 +1386,13 @@ namespace Bloxstrap
                 {
                     App.Logger.WriteLine(LOG_IDENT, "Failed to delete the latest version directory");
                     App.Logger.WriteException(LOG_IDENT, ex);
+                    throw;
                 }
             }
 
             Directory.CreateDirectory(_latestVersionDirectory);
 
             var cachedPackageHashes = Directory.GetFiles(Paths.Downloads).Select(x => Path.GetFileName(x));
-
-            // package manifest states packed size and uncompressed size in exact bytes
-            int totalSizeRequired = 0;
-
-            // packed size only matters if we don't already have the package cached on disk
-            totalSizeRequired += _versionPackageManifest.Where(x => !cachedPackageHashes.Contains(x.Signature)).Sum(x => x.PackedSize);
-            totalSizeRequired += _versionPackageManifest.Sum(x => x.Size);
-
-            if (Filesystem.GetFreeDiskSpace(Paths.Base) < totalSizeRequired)
-            {
-                Frontend.ShowMessageBox(Strings.Bootstrapper_NotEnoughSpace, MessageBoxImage.Error);
-                App.Terminate(ErrorCode.ERROR_INSTALL_FAILURE);
-                return;
-            }
 
             if (Dialog is not null)
             {
@@ -1364,7 +1402,7 @@ namespace Bloxstrap
                 Dialog.ProgressMaximum = ProgressBarMaximum;
 
                 // compute total bytes to download
-                int totalPackedSize = _versionPackageManifest.Sum(package => package.PackedSize);
+                long totalPackedSize = InstallPackagePipeline.PackedBytes(_versionPackageManifest);
                 _progressIncrement = (double)ProgressBarMaximum / totalPackedSize;
 
                 if (Dialog is WinFormsDialogBase)
@@ -1375,35 +1413,17 @@ namespace Bloxstrap
                 _taskbarProgressIncrement = _taskbarProgressMaximum / (double)totalPackedSize;
             }
 
-            var extractionTasks = new List<Task>();
+            await InstallPackagePipeline.RunAsync(_versionPackageManifest, DownloadPackage,
+                package => ExtractPackage(package), _cancelTokenSource.Token, () =>
+                {
+                    if (Dialog is null) return;
+                    Dialog.ProgressStyle = ProgressBarStyle.Marquee;
+                    Dialog.TaskbarProgressState = TaskbarItemProgressState.Indeterminate;
+                    SetStatus(Strings.Bootstrapper_Status_Configuring);
+                });
 
-            foreach (var package in _versionPackageManifest)
-            {
-                if (_cancelTokenSource.IsCancellationRequested)
-                    return;
-
-                // download all the packages synchronously
-                await DownloadPackage(package);
-
-                // we'll extract the runtime installer later if we need to
-                if (package.Name == "WebView2RuntimeInstaller.zip")
-                    continue;
-
-                // extract the package async immediately after download
-                extractionTasks.Add(Task.Run(() => ExtractPackage(package), _cancelTokenSource.Token));
-            }
-
-            if (_cancelTokenSource.IsCancellationRequested)
-                return;
-
-            if (Dialog is not null)
-            {
-                Dialog.ProgressStyle = ProgressBarStyle.Marquee;
-                Dialog.TaskbarProgressState = TaskbarItemProgressState.Indeterminate;
-                SetStatus(Strings.Bootstrapper_Status_Configuring);
-            }
-
-            await Task.WhenAll(extractionTasks);
+            if (!_packageExtractionSuccess)
+                throw new IOException("Some Roblox files could not be extracted. Installation must be retried before launching.");
 
             if (_cancelTokenSource.IsCancellationRequested)
                 return;
@@ -1434,33 +1454,36 @@ namespace Bloxstrap
 
                         if (package is null)
                         {
-                            App.Logger.WriteLine(LOG_IDENT, "Aborted runtime install because package does not exist, has WebView2 been added in this Roblox version yet?");
-                            return;
+                            App.Logger.WriteLine(LOG_IDENT, "This Roblox build has no bundled WebView2 installer; continuing build registration.");
                         }
-
-                        string baseDirectory = Path.Combine(_latestVersionDirectory, PackageDirectoryMap[package.Name]);
-
-                        ExtractPackage(package);
-
-                        SetStatus(Strings.Bootstrapper_Status_InstallingWebView2);
-
-                        var startInfo = new ProcessStartInfo()
+                        else
                         {
-                            WorkingDirectory = baseDirectory,
-                            FileName = Path.Combine(baseDirectory, "MicrosoftEdgeWebview2Setup.exe"),
-                            Arguments = "/silent /install"
-                        };
+                            string baseDirectory = Path.Combine(_latestVersionDirectory, PackageDirectoryMap[package.Name]);
 
-                        await Process.Start(startInfo)!.WaitForExitAsync();
+                            ExtractPackage(package);
 
-                        App.Logger.WriteLine(LOG_IDENT, "Finished installing runtime");
+                            SetStatus(Strings.Bootstrapper_Status_InstallingWebView2);
 
-                        Directory.Delete(baseDirectory, true);
+                            var startInfo = new ProcessStartInfo()
+                            {
+                                WorkingDirectory = baseDirectory,
+                                FileName = Path.Combine(baseDirectory, "MicrosoftEdgeWebview2Setup.exe"),
+                                Arguments = "/silent /install"
+                            };
+
+                            await Process.Start(startInfo)!.WaitForExitAsync();
+
+                            App.Logger.WriteLine(LOG_IDENT, "Finished installing runtime");
+
+                            Directory.Delete(baseDirectory, true);
+                        }
                     }
                 }
             }
 
             // finishing and cleanup
+
+            _cancelTokenSource.Token.ThrowIfCancellationRequested();
 
             MigrateCompatibilityFlags();
 
@@ -1470,8 +1493,6 @@ namespace Bloxstrap
 
             foreach (var package in _versionPackageManifest)
                 AppData.DistributionState.PackageHashes.Add(package.Name, package.Signature);
-
-            CleanupVersionsFolder();
 
             var allPackageHashes = new List<string>();
 
@@ -1501,11 +1522,11 @@ namespace Bloxstrap
 
             App.Logger.WriteLine(LOG_IDENT, "Registering approximate program size...");
 
-            int distributionSize = _versionPackageManifest.Sum(x => x.Size + x.PackedSize) / 1024;
+            int distributionSize = InstallPackagePipeline.EstimatedKilobytes(_versionPackageManifest);
 
             AppData.DistributionState.Size = distributionSize;
 
-            int totalSize = App.PlayerState.Prop.Size + App.PlayerState.Prop.Size;
+            int totalSize = (int)Math.Clamp((long)App.PlayerState.Prop.Size + App.StudioState.Prop.Size, 0, int.MaxValue);
 
             using (var uninstallKey = Registry.CurrentUser.CreateSubKey(App.UninstallKey))
             {
@@ -1516,10 +1537,9 @@ namespace Bloxstrap
 
             App.Logger.WriteLine(LOG_IDENT, $"Registered as {totalSize} KB");
 
-            App.State.Prop.ForceReinstall = false;
+            InstallPackagePipeline.CompleteRecovery(AppData.DistributionStateManager);
 
-            App.State.Save();
-            AppData.DistributionStateManager.Save();
+            CleanupVersionsFolder();
 
             _isInstalling = false;
         }
