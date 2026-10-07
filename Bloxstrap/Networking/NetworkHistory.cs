@@ -6,7 +6,7 @@ namespace Bloxstrap.Networking
         public static bool Accept(DateTimeOffset timestamp)
         {
             if (!File.Exists(CutoffPath)) return true;
-            if (!DateTimeOffset.TryParse(File.ReadAllText(CutoffPath), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var cutoff))
+            if (!DateTimeOffset.TryParse(AtomicFile.ReadText(CutoffPath), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var cutoff))
                 throw new InvalidDataException("Network reset timestamp is invalid.");
             return timestamp >= cutoff;
         }
@@ -26,9 +26,14 @@ namespace Bloxstrap.Networking
         public static void Reset()
         {
             using var gate = Lock();
+            using var settingsGate = DataLock("AdaptiveRegionSettings", TimeSpan.FromSeconds(2));
+            if (!settingsGate.IsAcquired) throw new IOException("Network settings are busy.");
+            var disk = new JsonManager<Settings>();
+            if (disk.IsSaved) { if (!disk.Load(false)) throw new IOException("Saved settings are unavailable; network history was not reset."); }
+            else disk.Prop = App.Settings.Prop;
             Directory.CreateDirectory(Paths.Cache);
             // Leave the epoch in place so diagnostics that started before reset cannot return old data.
-            File.WriteAllText(CutoffPath, DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+            AtomicFile.WriteText(CutoffPath, DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
             foreach (string file in new[] { "LearnedRegions.json", "LearnedRegions.json.tmp", "ServerRegions.json", "ServerRegions.json.tmp", "server_cache.json", "RegionCalibration.json", "NetworkTest.json", "NetworkTest.json.tmp", "CompetitiveRegionHistory.json", "CompetitiveNetworkState.json", "CompetitiveNetworkState.json.tmp", "CompetitivePendingJoin.json", "AutoLogRetries.json", "AutoLogRetries.json.tmp" })
                 DeleteFile(Path.Combine(Paths.Cache, file), Paths.Cache);
             foreach (string folder in new[] { "CompetitiveSessions", "CompetitiveRoutes" })
@@ -44,17 +49,13 @@ namespace Bloxstrap.Networking
             App.Settings.Prop.CompetitiveFallbackCities.Clear();
             App.Settings.Prop.RegionCalibrationCompleted = false;
             AdaptiveRegionService.ClearStatus();
-            using var settingsGate = DataLock("AdaptiveRegionSettings", TimeSpan.FromSeconds(2));
-            if (!settingsGate.IsAcquired) throw new IOException("Network settings are busy.");
-            var disk = new JsonManager<Settings>();
-            if (disk.IsSaved) disk.Load(false); else disk.Prop = App.Settings.Prop;
             disk.Prop.AutomaticRegionalPreference = true;
             disk.Prop.PreferNorthAmericaOnly = disk.Prop.PreferEuropeOnly = false;
             disk.Prop.CompetitivePreferredCity = "";
             disk.Prop.CompetitiveFallbackCities = new();
             disk.Prop.RegionCalibrationCompleted = false;
             disk.Prop.NetworkSetupVersion = 0;
-            disk.Save();
+            if (!disk.TrySave()) throw new IOException("Reset network preferences could not be saved.");
         }
         private static void DeleteFile(string path, string root) { path = SafePath(path, root); if (File.Exists(path)) File.Delete(path); }
         private static string SafePath(string path, string root)

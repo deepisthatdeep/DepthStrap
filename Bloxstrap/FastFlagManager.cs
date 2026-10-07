@@ -200,7 +200,7 @@ namespace Bloxstrap
             base.Save();
 
             // clone the dictionary
-            OriginalProp = new(Prop);
+            if (LastSaveSucceeded) OriginalProp = new(Prop);
         }
 
         public override bool Load(bool alertFailure = true)

@@ -69,7 +69,7 @@ namespace Bloxstrap.Networking
         public static string FilePath => Path.Combine(Paths.Cache, "NetworkTest.json");
         public static NetworkTestResult? Read()
         {
-            try { return File.Exists(FilePath) ? JsonSerializer.Deserialize<NetworkTestResult>(File.ReadAllText(FilePath)) : null; }
+            try { return File.Exists(FilePath) ? JsonSerializer.Deserialize<NetworkTestResult>(AtomicFile.ReadText(FilePath)) : null; }
             catch { return null; }
         }
         public void Apply(Settings s)
@@ -91,8 +91,7 @@ namespace Bloxstrap.Networking
         public void Save()
         {
             Directory.CreateDirectory(Paths.Cache);
-            string temp = FilePath + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(this)); File.Move(temp, FilePath, true);
+            AtomicFile.WriteText(FilePath, JsonSerializer.Serialize(this));
             Apply(App.Settings.Prop);
             App.Settings.Prop.NetworkSetupVersion = SetupFinished || Completed ? 1 : 0;
             App.Settings.Prop.RegionCalibrationCompleted = Completed;
@@ -100,10 +99,11 @@ namespace Bloxstrap.Networking
             using var gate = Bloxstrap.Networking.NetworkHistory.DataLock("AdaptiveRegionSettings", TimeSpan.FromSeconds(2));
             if (!gate.IsAcquired) throw new IOException("Network settings are busy. Try again.");
             var disk = new JsonManager<Settings>();
-            if (disk.IsSaved) disk.Load(false); else disk.Prop = App.Settings.Prop;
+            if (disk.IsSaved) { if (!disk.Load(false)) throw new IOException("Saved settings are unavailable; the network result was retained but preferences were not overwritten."); }
+            else disk.Prop = App.Settings.Prop;
             Apply(disk.Prop); disk.Prop.NetworkSetupVersion = SetupFinished || Completed ? 1 : 0; disk.Prop.RegionCalibrationCompleted = Completed;
             disk.Prop.CloudflareTermsAccepted = App.Settings.Prop.CloudflareTermsAccepted;
-            disk.Save();
+            if (!disk.TrySave()) throw new IOException("Network preferences could not be saved.");
         }
     }
 }

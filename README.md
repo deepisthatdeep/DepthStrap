@@ -38,6 +38,8 @@ The release contains no personal settings, accounts, cookies, session logs or le
 
 ## Build and verify
 
+Before committing, run `pwsh Scripts/install-git-privacy-guard.ps1` inside this checkout. It configures a repository-local public GitHub noreply identity and installs commit, commit-message and pre-push checks. These block private identities, personal profile paths, known credentials and runtime files; the push check also catches commits made while bypassing pre-commit. `pwsh Scripts/verify-git-privacy-guard.ps1` verifies the hooks against an isolated local repository and local bare remote. The optional `.git/privacy-denylist.txt` stores additional private strings locally and is never included in source packages. Hooks can be bypassed, so release package scans remain required.
+
 Use the .NET 10 SDK on Windows. Clone this repository with `git clone --recurse-submodules https://github.com/deepisthatdeep/DepthStrap.git`, or extract the source release archive, which includes dependency source.
 
 ```powershell

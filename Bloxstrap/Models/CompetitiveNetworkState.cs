@@ -81,9 +81,7 @@ namespace Bloxstrap.Models
                 Directory.CreateDirectory(dir);
 
                 string json = JsonSerializer.Serialize(FromEvent(evt), _options);
-                string tmp = FilePath + ".tmp";
-                File.WriteAllText(tmp, json);
-                File.Move(tmp, FilePath, overwrite: true);
+                AtomicFile.WriteText(FilePath, json);
             }
             catch (Exception ex)
             {
@@ -99,7 +97,7 @@ namespace Bloxstrap.Models
                 if (!File.Exists(FilePath))
                     return null;
 
-                return JsonSerializer.Deserialize<CompetitiveNetworkState>(File.ReadAllText(FilePath), _options);
+                return JsonSerializer.Deserialize<CompetitiveNetworkState>(AtomicFile.ReadText(FilePath), _options);
             }
             catch
             {

@@ -55,11 +55,23 @@ namespace Bloxstrap.UI.ViewModels.Settings
 
         public void SaveSettings()
         {
+            TrySaveSettings();
+        }
+
+        private bool TrySaveSettings()
+        {
             const string LOG_IDENT = "MainWindowViewModel::SaveSettings";
 
-            Networking.AdaptiveRegionService.SaveUserSettings();
+            try { Networking.AdaptiveRegionService.SaveUserSettings(); }
+            catch (IOException ex)
+            {
+                Frontend.ShowMessageBox(ex.Message, MessageBoxImage.Warning);
+                return false;
+            }
             App.State.Save();
+            if (!App.State.LastSaveSucceeded) return false;
             App.FastFlags.Save();
+            if (!App.FastFlags.LastSaveSucceeded) return false;
             App.GlobalSettings.Save();
 
             foreach (var pair in App.PendingSettingTasks)
@@ -76,11 +88,12 @@ namespace Bloxstrap.UI.ViewModels.Settings
             App.PendingSettingTasks.Clear();
 
             RequestSaveNoticeEvent?.Invoke(this, EventArgs.Empty);
+            return true;
         }
 
         public void SaveAndLaunch(string mode)
         {
-            SaveSettings();
+            if (!TrySaveSettings()) return;
 
             if (!App.LaunchSettings.TestModeFlag.Active)
                 Process.Start(Paths.Application, $"-{mode.ToLower()}");
@@ -90,7 +103,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
 
         private async void RestartApp()
         {
-            SaveSettings();
+            if (!TrySaveSettings()) return;
 
             SettingsSaved?.Invoke(this, EventArgs.Empty);
 

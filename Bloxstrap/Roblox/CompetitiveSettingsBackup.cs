@@ -18,7 +18,7 @@ namespace Bloxstrap.Roblox
 
         private static string FilePath => Path.Combine(Paths.Cache, "CompetitiveSettingsBackup.json");
         private static Backup Read() => File.Exists(FilePath)
-            ? JsonSerializer.Deserialize<Backup>(File.ReadAllText(FilePath)) ?? new() : new();
+            ? JsonSerializer.Deserialize<Backup>(AtomicFile.ReadText(FilePath)) ?? new() : new();
 
         private static InterProcessLock Acquire()
         {
@@ -30,26 +30,7 @@ namespace Bloxstrap.Roblox
 
         private static void Save(Backup backup)
         {
-            Directory.CreateDirectory(Paths.Cache);
-            string temp = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            try
-            {
-                File.WriteAllText(temp, JsonSerializer.Serialize(backup));
-                for (int attempt = 0; ; attempt++)
-                {
-                    try { File.Move(temp, FilePath, overwrite: true); break; }
-                    catch (IOException ex) when (attempt < 5 && (ex.HResult & 0xffff) is 32 or 33)
-                    {
-                        // Antivirus and sync clients can briefly hold a reader open.
-                        Thread.Sleep(40 * (attempt + 1));
-                    }
-                }
-            }
-            finally
-            {
-                try { File.Delete(temp); }
-                catch (IOException) { }
-            }
+            AtomicFile.WriteText(FilePath, JsonSerializer.Serialize(backup));
         }
 
         private static void Remember(string key, string? original, string? applied, bool global)

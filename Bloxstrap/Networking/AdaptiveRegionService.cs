@@ -8,6 +8,8 @@ namespace Bloxstrap.Networking
         private static readonly SemaphoreSlim Gate = new(1, 1);
         private static string HistoryPath => Path.Combine(Paths.Cache, "LearnedRegions.json");
         private static string? _status;
+        private static (string Path, DateTime Written, long Length)? _settingsStamp;
+        private static Settings? _settingsSnapshot;
         public static string Status
         {
             get
@@ -60,10 +62,8 @@ namespace Bloxstrap.Networking
                 samples.AddRange(additions);
                 samples = samples.Where(x => x.Timestamp >= DateTimeOffset.UtcNow.AddDays(-30)).TakeLast(2000).ToList();
                 Directory.CreateDirectory(Paths.Cache);
-                string temp = HistoryPath + ".tmp";
                 token.ThrowIfCancellationRequested();
-                File.WriteAllText(temp, JsonSerializer.Serialize(samples));
-                File.Move(temp, HistoryPath, true);
+                AtomicFile.WriteText(HistoryPath, JsonSerializer.Serialize(samples));
                 Apply(samples, route);
             }
             catch (Exception ex) when (ex is not OperationCanceledException) { App.Logger.WriteException("AdaptiveRegionService::Record", ex); }
@@ -96,7 +96,7 @@ namespace Bloxstrap.Networking
             using var processLock = Bloxstrap.Networking.NetworkHistory.DataLock("AdaptiveRegionSettings", TimeSpan.FromSeconds(2));
             if (!processLock.IsAcquired) return;
             var disk = new JsonManager<Models.Persistable.Settings>();
-            if (disk.IsSaved) disk.Load(false);
+            if (disk.IsSaved) { if (!disk.Load(false)) return; }
             else disk.Prop = settings;
             // A user turning off learning in another window wins over a late diagnostic result.
             if (!disk.Prop.AdaptiveRegionPreferencesEnabled || disk.Prop.PreferNorthAmericaOnly != settings.PreferNorthAmericaOnly ||
@@ -104,13 +104,17 @@ namespace Bloxstrap.Networking
             disk.Prop.CompetitivePreferredCity = settings.CompetitivePreferredCity;
             disk.Prop.CompetitiveFallbackCities = settings.CompetitiveFallbackCities;
             disk.Prop.RegionCalibrationCompleted = settings.RegionCalibrationCompleted;
-            disk.Save();
+            if (!disk.TrySave()) throw new IOException("Learned region preferences could not be saved.");
         }
 
         private static bool MergeLearnedFields(Settings current, Settings disk)
         {
             if (!current.AdaptiveRegionPreferencesEnabled || !disk.AdaptiveRegionPreferencesEnabled ||
                 current.PreferNorthAmericaOnly != disk.PreferNorthAmericaOnly || current.PreferEuropeOnly != disk.PreferEuropeOnly) return false;
+            bool changed = current.CompetitivePreferredCity != disk.CompetitivePreferredCity ||
+                !current.CompetitiveFallbackCities.SequenceEqual(disk.CompetitiveFallbackCities) ||
+                current.RegionCalibrationCompleted != disk.RegionCalibrationCompleted;
+            if (!changed) return false;
             current.CompetitivePreferredCity = disk.CompetitivePreferredCity;
             current.CompetitiveFallbackCities = disk.CompetitiveFallbackCities.ToList();
             current.RegionCalibrationCompleted = disk.RegionCalibrationCompleted;
@@ -122,7 +126,21 @@ namespace Bloxstrap.Networking
             using var gate = NetworkHistory.DataLock("AdaptiveRegionSettings", TimeSpan.Zero);
             if (!gate.IsAcquired || !App.Settings.Prop.AdaptiveRegionPreferencesEnabled) return false;
             var disk = new JsonManager<Settings>();
-            return disk.IsSaved && disk.Load(false) && MergeLearnedFields(App.Settings.Prop, disk.Prop);
+            try
+            {
+                var info = new FileInfo(disk.FileLocation);
+                if (!info.Exists) { _settingsStamp = null; _settingsSnapshot = null; return false; }
+                var stamp = (info.FullName, info.LastWriteTimeUtc, info.Length);
+                if (_settingsStamp != stamp || _settingsSnapshot is null)
+                {
+                    if (!disk.Load(false)) return false;
+                    _settingsSnapshot = disk.Prop;
+                    _settingsStamp = stamp;
+                }
+                return MergeLearnedFields(App.Settings.Prop, _settingsSnapshot);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            { App.Logger.WriteException("AdaptiveRegionService::Refresh", ex); return false; }
         }
 
         internal static void SaveUserSettings()
@@ -130,8 +148,12 @@ namespace Bloxstrap.Networking
             using var gate = NetworkHistory.DataLock("AdaptiveRegionSettings", TimeSpan.FromSeconds(2));
             if (!gate.IsAcquired) throw new IOException("Network preferences are being saved. Try Save again.");
             var disk = new JsonManager<Settings>();
-            if (disk.IsSaved && disk.Load(false)) MergeLearnedFields(App.Settings.Prop, disk.Prop);
-            App.Settings.Save();
+            if (disk.IsSaved)
+            {
+                if (!disk.Load(false)) throw new IOException("Saved settings are unavailable. They have been preserved; retry Save when the file is readable.");
+                MergeLearnedFields(App.Settings.Prop, disk.Prop);
+            }
+            if (!App.Settings.TrySave()) throw new IOException("Settings could not be saved. Your previous file has been preserved.");
         }
 
         public static async Task RefreshAsync(CancellationToken token)

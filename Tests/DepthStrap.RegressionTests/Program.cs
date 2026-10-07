@@ -106,6 +106,7 @@ internal static class Program
         VerifyCore();
         NetworkChecks.Run(Check, args.Contains("--verify-warp-package") ? args[Array.IndexOf(args, "--verify-warp-package") + 1] : null);
         FeatureChecks.Run(Check);
+        SettingsChecks.Run(Check);
         ServerBrowserChecks.Run(Check);
         if (args.Contains("--verify-public-network")) ServerBrowserChecks.VerifyPublicNetwork(Check);
         WatcherChecks.Run(Check);

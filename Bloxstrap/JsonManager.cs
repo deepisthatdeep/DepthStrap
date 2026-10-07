@@ -10,12 +10,14 @@ namespace Bloxstrap
         public virtual T Prop
         {
             get => _prop;
-            set => _prop = value;
+            set { _prop = value; LastLoadFailed = false; }
         }
 
         public string? LastFileHash { get; private set; }
 
         public bool Loaded { get; protected set; } = false;
+        public bool LastLoadFailed { get; private set; }
+        public bool LastSaveSucceeded { get; private set; }
 
         public virtual string ClassName { get; }
 
@@ -44,7 +46,7 @@ namespace Bloxstrap
             {
                 if (File.Exists(FileLocation))
                 {
-                    string contents = File.ReadAllText(FileLocation);
+                    string contents = AtomicFile.ReadText(FileLocation);
 
                     T? settings = JsonSerializer.Deserialize<T>(contents);
 
@@ -53,6 +55,7 @@ namespace Bloxstrap
 
                     _prop = settings;
                     Loaded = true;
+                    LastLoadFailed = false;
                     LastFileHash = MD5Hash.FromString(contents);
 
                     App.Logger.WriteLine(LOG_IDENT, "Loaded successfully!");
@@ -63,6 +66,7 @@ namespace Bloxstrap
                 {
                     App.Logger.WriteLine(LOG_IDENT, $"Could not find {FileLocation}.");
                     Loaded = true;
+                    LastLoadFailed = false;
 
                     return false;
                 }
@@ -71,6 +75,7 @@ namespace Bloxstrap
             {
                 App.Logger.WriteLine(LOG_IDENT, "Failed to load!");
                 App.Logger.WriteException(LOG_IDENT, ex);
+                LastLoadFailed = true;
 
                 if (alertFailure)
                 {
@@ -96,26 +101,28 @@ namespace Bloxstrap
                     }
                 }
 
-                Loaded = true;
-                Save();
-
                 return false;
             }
         }
 
         public virtual void Save()
         {
+            TrySave(alertFailure: true);
+        }
+
+        public bool TrySave(bool alertFailure = false)
+        {
             string LOG_IDENT = $"{LOG_IDENT_CLASS}::Save";
+            LastSaveSucceeded = false;
             
             App.Logger.WriteLine(LOG_IDENT, $"Saving to {FileLocation}...");
 
-            Directory.CreateDirectory(Path.GetDirectoryName(FileLocation)!);
-
             try
             {
+                if (LastLoadFailed) throw new IOException("The original settings could not be read. Retry loading or repair the file before saving; it has been preserved.");
                 string contents = JsonSerializer.Serialize(Prop, new JsonSerializerOptions { WriteIndented = true });
 
-                File.WriteAllText(FileLocation, contents);
+                AtomicFile.WriteText(FileLocation, contents);
 
                 LastFileHash = MD5Hash.FromString(contents);
             }
@@ -125,12 +132,14 @@ namespace Bloxstrap
                 App.Logger.WriteException(LOG_IDENT, ex);
 
                 string errorMessage = string.Format(Resources.Strings.Bootstrapper_JsonManagerSaveFailed, ClassName, ex.Message);
-                Frontend.ShowMessageBox(errorMessage, System.Windows.MessageBoxImage.Warning);
+                if (alertFailure) Frontend.ShowMessageBox(errorMessage, System.Windows.MessageBoxImage.Warning);
 
-                return;
+                return false;
             }
 
             App.Logger.WriteLine(LOG_IDENT, "Save complete!");
+            LastSaveSucceeded = true;
+            return true;
         }
 
         public virtual void Delete()
@@ -342,11 +351,10 @@ namespace Bloxstrap
         /// </summary>
         public bool HasFileOnDiskChanged()
         {
-            // check if a file has been created since launch
-            if (string.IsNullOrEmpty(LastFileHash) && File.Exists(FileLocation))
-                return true;
-
-            return LastFileHash != MD5Hash.FromFile(FileLocation);
+            if (!File.Exists(FileLocation)) return LastFileHash is not null;
+            try { return LastFileHash != MD5Hash.FromString(AtomicFile.ReadText(FileLocation)); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            { return true; } // unavailable data must be reconsidered before an overwrite
         }
     }
 
@@ -367,7 +375,7 @@ namespace Bloxstrap
             }
             set
             {
-                _prop = value;
+                base.Prop = value;
                 Loaded = true;
             }
         }

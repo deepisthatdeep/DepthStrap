@@ -1,0 +1,6 @@
+#!/bin/sh
+if command -v pwsh >/dev/null 2>&1; then
+  exec pwsh -NoProfile -File Scripts/git-privacy-guard.ps1 -Mode Commit
+fi
+echo "Privacy guard requires PowerShell 7 (pwsh)." >&2
+exit 1

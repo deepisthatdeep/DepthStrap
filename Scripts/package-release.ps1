@@ -27,7 +27,7 @@ function Copy-SourceFile([string]$RelativePath) {
     Copy-Item -LiteralPath $from -Destination $to
 }
 
-$sourceSelections = @('Bloxstrap', 'Scripts', 'Tests', 'DepthStrap.slnx', 'README.md', 'NOTICE.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-UNLICENSE', 'LICENSE-INITIAL-REPOSITORY', 'flake.nix', 'flake.lock', 'justfile')
+$sourceSelections = @('.githooks', '.gitattributes', 'Bloxstrap', 'Scripts', 'Tests', 'DepthStrap.slnx', 'README.md', 'NOTICE.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-UNLICENSE', 'LICENSE-INITIAL-REPOSITORY', 'flake.nix', 'flake.lock', 'justfile')
 if (Test-Path -LiteralPath (Join-Path $projectRoot '.git')) {
     $sourceFiles = & git -C $projectRoot ls-files --cached --others --exclude-standard -- @sourceSelections
     if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate application source.' }
