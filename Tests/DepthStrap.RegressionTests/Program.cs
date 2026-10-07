@@ -108,6 +108,7 @@ internal static class Program
         NetworkChecks.Run(Check, args.Contains("--verify-warp-package") ? args[Array.IndexOf(args, "--verify-warp-package") + 1] : null);
         FeatureChecks.Run(Check);
         SettingsChecks.Run(Check);
+        ClientFilesChecks.Run(Check);
         VersionChecks.Run(Check);
         InstallerChecks.Run(Check);
         InstallLifecycleChecks.Run(Check);
@@ -322,7 +323,7 @@ internal static class Program
         Check(File.ReadAllLines(CompetitiveSessionLogger.GetJsonlPath()).Length == 144, "Multiple processes retain all session log lines");
         Check(JsonSerializer.Deserialize<List<RegionObservation>>(File.ReadAllText(Path.Combine(Paths.Cache, "LearnedRegions.json")))!.Count == 80, "Multiple processes retain all learned observations");
         foreach (var version in new[] { "version-0123456789abcdef", "version-fedcba9876543210" })
-        { var directory = Path.Combine(Paths.Versions, version); Directory.CreateDirectory(directory); File.WriteAllText(Path.Combine(directory, App.RobloxPlayerAppName), "fixture"); }
+        { var directory = Path.Combine(Paths.Versions, version); Directory.CreateDirectory(directory); ClientFilesChecks.WriteExecutable(Path.Combine(directory, App.RobloxPlayerAppName)); }
         App.Settings.Prop.RobloxVersionArchiveLimit = 1; App.Settings.Prop.RobloxPlayerVersionOverride = "version-0123456789abcdef";
         Check(RobloxVersionArchive.InstalledPlayerVersions().Count == 2 && RobloxVersionArchive.RetainedVersions().Contains("version-0123456789abcdef"), "Archive retains pinned build");
         App.Settings.Prop = new Settings();

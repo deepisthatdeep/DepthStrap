@@ -71,7 +71,7 @@ namespace Bloxstrap
         private long _totalDownloadedBytes = 0;
         private bool _packageExtractionSuccess = true;
 
-        private bool _mustUpgrade => App.LaunchSettings.ForceFlag.Active || App.State.Prop.ForceReinstall || AppData.DistributionState.InstallationPending || String.IsNullOrEmpty(AppData.DistributionState.VersionGuid) || !File.Exists(AppData.ExecutablePath);
+        private bool _mustUpgrade => App.LaunchSettings.ForceFlag.Active || App.State.Prop.ForceReinstall || AppData.DistributionState.InstallationPending || String.IsNullOrEmpty(AppData.DistributionState.VersionGuid) || !File.Exists(AppData.ExecutablePath) || (!IsStudioLaunch && !Roblox.RobloxClientFiles.IsPlayerComplete(AppData.ExecutablePath));
 
         private bool _noConnection = false;
 
@@ -670,23 +670,10 @@ namespace Bloxstrap
                 }
             }
 
-            string[] Names = { App.RobloxPlayerAppName, App.RobloxStudioAppName };
-            string ResolvedName = null!;
-
-            foreach (string Name in Names)
-            {
-                string Directory = Path.Combine((string)AppData.Directory, Name);
-                if (File.Exists(Directory))
-                {
-                    ResolvedName = Name;
-                }
-            }
-
-            if (String.IsNullOrEmpty(ResolvedName))
-            {
-                await UpgradeRoblox();
-            }
-
+            string ResolvedName = IsStudioLaunch ? App.RobloxStudioAppName : App.RobloxPlayerAppName;
+            string executablePath = Path.Combine(AppData.Directory, ResolvedName);
+            if (!File.Exists(executablePath) || (!IsStudioLaunch && !Roblox.RobloxClientFiles.IsPlayerComplete(executablePath)))
+                throw new InvalidDataException("The Roblox installation is incomplete. Repair or reinstall the selected build before launching.");
             var startInfo = new ProcessStartInfo()
             {
                 FileName = Path.Combine(AppData.Directory, ResolvedName),
@@ -1333,7 +1320,7 @@ namespace Bloxstrap
                 (_launchMode == LaunchMode.Player && !string.IsNullOrWhiteSpace(App.Settings.Prop.RobloxPlayerVersionOverride));
             if (explicitVersion && _launchMode == LaunchMode.Player && Roblox.CompetitiveSettingsBackup.PlayerPresence())
                 throw new InvalidOperationException("Close all Roblox clients before installing a pinned version. Existing clients have been left open.");
-            bool CancelUpgrade = !App.Settings.Prop.UpdateRoblox && !explicitVersion && !App.LaunchSettings.ForceFlag.Active && !AppData.DistributionState.InstallationPending;
+            bool CancelUpgrade = !App.Settings.Prop.UpdateRoblox && !explicitVersion && !App.LaunchSettings.ForceFlag.Active && !_mustUpgrade;
 
             if (CancelUpgrade)
             {
@@ -1484,6 +1471,9 @@ namespace Bloxstrap
             // finishing and cleanup
 
             _cancelTokenSource.Token.ThrowIfCancellationRequested();
+
+            if (!IsStudioLaunch && !Roblox.RobloxClientFiles.IsPlayerComplete(Path.Combine(_latestVersionDirectory, App.RobloxPlayerAppName)))
+                throw new InvalidDataException("The downloaded Roblox build is missing or has invalid required Player files. Installation was not completed.");
 
             MigrateCompatibilityFlags();
 
