@@ -115,6 +115,7 @@ internal static class Program
         VerifyCore();
         NetworkChecks.Run(Check, args.Contains("--verify-warp-package") ? args[Array.IndexOf(args, "--verify-warp-package") + 1] : null);
         FeatureChecks.Run(Check);
+        SystemTuningChecks.Run(Check);
         SettingsChecks.Run(Check);
         ClientFilesChecks.Run(Check);
         VersionChecks.Run(Check);
@@ -204,6 +205,10 @@ internal static class Program
         var setupRoot = (FrameworkElement)setup.Content; setupRoot.SetValue(System.Windows.Documents.TextElement.ForegroundProperty, setup.Foreground);
         setup.Content = null;
         SaveVisual(new System.Windows.Controls.Border { Background = setup.Background, Child = setupRoot }, Path.Combine(Path.GetDirectoryName(output)!, "DepthStrap-NetworkSetup.png"), 610, 450);
+        var tuning = new Bloxstrap.UI.Elements.Dialogs.SystemPerformanceDialog();
+        var tuningRoot = (FrameworkElement)tuning.Content;
+        tuningRoot.SetValue(System.Windows.Documents.TextElement.ForegroundProperty, tuning.Foreground); tuning.Content = null;
+        SaveVisual(new System.Windows.Controls.Border { Background = tuning.Background, Child = tuningRoot }, Path.Combine(Path.GetDirectoryName(output)!, "DepthStrap-SystemPerformance.png"), 720, 820);
         var launcher = new DepthStrapDialog { Message = "Preparing Roblox…", ProgressMaximum = 100, ProgressValue = 64, CancelEnabled = true };
         var launcherRoot = (FrameworkElement)launcher.Content;
         launcherRoot.DataContext = launcher.DataContext;

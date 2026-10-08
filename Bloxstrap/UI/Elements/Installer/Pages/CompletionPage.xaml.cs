@@ -26,11 +26,16 @@ namespace Bloxstrap.UI.Elements.Installer.Pages
 
         private void UiPage_Loaded(object sender, RoutedEventArgs e)
         {
+            RestartNotice.Visibility = Networking.SystemPerformanceTuning.RestartRecommended ? Visibility.Visible : Visibility.Collapsed;
             if (Window.GetWindow(this) is MainWindow window)
             {
                 window.SetNextButtonText(Strings.Common_Navigation_Next);
                 window.SetButtonEnabled("back", false);
             }
+        }
+        private void RestartWindows_Click(object sender, RoutedEventArgs e)
+        {
+            if (Networking.SystemPerformanceTuning.ConfirmRestart()) Window.GetWindow(this)?.Close();
         }
     }
 }

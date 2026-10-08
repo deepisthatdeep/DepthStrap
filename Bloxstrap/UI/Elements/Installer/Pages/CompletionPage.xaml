@@ -14,6 +14,13 @@
 
     <StackPanel Margin="0,0,14,14">
         <TextBlock FontSize="14" Text="{x:Static resources:Strings.Installer_Completion_Text}" TextWrapping="Wrap" Margin="0,8,0,0" />
+        <Border x:Name="RestartNotice" Visibility="Collapsed" Background="#30E69B46" BorderBrush="DarkOrange" BorderThickness="1" CornerRadius="6" Padding="16" Margin="0,16,0,0">
+            <StackPanel>
+                <TextBlock Text="Changes will apply after Windows restart." FontSize="18" FontWeight="Bold" TextWrapping="Wrap" />
+                <TextBlock Text="DepthStrap installation and network setup are complete. Save your work before restarting your PC." TextWrapping="Wrap" Margin="0,8,0,12" />
+                <Button Content="Restart Windows…" HorizontalAlignment="Left" Padding="16,8" Click="RestartWindows_Click" />
+            </StackPanel>
+        </Border>
 
         <ui:CardAction Margin="0,16,0,0" Icon="Settings28" Command="{Binding LaunchSettingsCommand, Mode=OneTime}">
             <StackPanel>

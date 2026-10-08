@@ -105,6 +105,7 @@ namespace Bloxstrap.Models.Persistable
         public bool AdaptiveRegionPreferencesEnabled { get; set; } = true;
         public bool CloudflareTermsAccepted { get; set; } = false;
         public int NetworkSetupVersion { get; set; } = 0;
+        public bool SystemPerformanceOfferShown { get; set; } = false;
         public bool RegionCalibrationCompleted { get; set; } = false;
         public bool MatchFpsToMonitorRefreshRate { get; set; } = true;
 

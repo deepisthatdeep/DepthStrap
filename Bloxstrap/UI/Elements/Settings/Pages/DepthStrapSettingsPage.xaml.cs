@@ -31,6 +31,8 @@ namespace Bloxstrap.UI.Elements.Settings.Pages
 
             App.FrostRPC?.ClearDialog();
         }
+        private void SystemPerformance_Click(object sender, RoutedEventArgs e) =>
+            new SystemPerformanceDialog { Owner = Window.GetWindow(this) }.ShowDialog();
 
         // custom launcher theme selection (moved from AppearancePage)
         public void CustomThemeSelection(object sender, SelectionChangedEventArgs e)

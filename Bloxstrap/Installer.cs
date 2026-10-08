@@ -148,6 +148,14 @@ namespace Bloxstrap
             Roblox.MonitorRefreshRateService.ApplyDetectedCap();
             App.Settings.Save();
 
+            if (!IsImplicitInstall && !App.Settings.LastLoadFailed && !App.Settings.Prop.SystemPerformanceOfferShown &&
+                Application.Current is not null && !App.LaunchSettings.QuietFlag.Active)
+            {
+                new UI.Elements.Dialogs.SystemPerformanceDialog(duringInstall: true).ShowDialog();
+                App.Settings.Prop.SystemPerformanceOfferShown = true;
+                App.Settings.Save();
+            }
+
             if (App.Settings.Prop.NetworkSetupVersion < 1)
             {
                 try

@@ -21,6 +21,9 @@
 
         <!-- ============ DEPTHSTRAP (channel / updates / static dir) ============ -->
         <TextBlock Text="DepthStrap" FontSize="20" FontWeight="Bold" Margin="0,16,0,0" />
+        <controls:OptionControl Header="Windows &amp; network performance" Description="Optional administrator-approved Balanced (High performance) or Extreme (Ultimate Performance) profiles, supported adapter limits and Restore. Changes affect Windows and active physical adapters; restart afterward.">
+            <ui:Button Content="Profiles / restore" Click="SystemPerformance_Click" />
+        </controls:OptionControl>
 
         <StackPanel DataContext="{Binding Channel}">
             <controls:OptionControl Header="Automatic DepthStrap updates" Description="Install verified stable GitHub releases when DepthStrap opens. Updates wait until Roblox and Studio are closed. Your settings are kept. Only DepthStrap updates; Roblox update settings stay unchanged.">
