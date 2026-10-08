@@ -74,6 +74,13 @@ namespace Bloxstrap.Networking
         {
             var s = App.Settings.Prop;
             if (!s.AdaptiveRegionPreferencesEnabled || !s.CompetitiveModeEnabled) return;
+            // A failed trace is missing evidence, not a new route with no usable regions.
+            // Keep the last measured preferences until the connection can be identified.
+            if (route == "unknown" || route == "warp:")
+            {
+                Status = "Current route is unavailable. Previously measured region preferences were retained.";
+                return;
+            }
             var ranking = AdaptiveRegionPlanner.Rank(samples, route, DateTime.Now.Hour, DateTimeOffset.UtcNow, s.PreferNorthAmericaOnly, s.PreferEuropeOnly);
             ranking = AdaptiveRegionPlanner.Stabilize(ranking, s.CompetitivePreferredCity);
             if (ranking.Count == 0)

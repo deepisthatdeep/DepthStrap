@@ -5,6 +5,17 @@ namespace Bloxstrap.Networking
     internal sealed record ComparisonRun(RouteDecision? Decision, List<RoutingSample> Samples, CloudflareTraceResult? FinalState, string Error, string DirectCountry = "");
     internal static class RouteComparisonRunner
     {
+        internal static async Task<List<RoutingSample>> ProbeVerifiedAsync(CloudflareTraceResult? expected,
+            Func<CancellationToken, Task<CloudflareTraceResult?>> state,
+            Func<string, CancellationToken, Task<List<RoutingSample>>> probe, CancellationToken token)
+        {
+            string route = AdaptiveRegionService.RouteKey(expected);
+            var measured = await probe(route, token);
+            var after = await state(token);
+            if (after?.WarpActive != expected?.WarpActive || AdaptiveRegionService.RouteKey(after) != route)
+                throw new IOException("The network route changed during measurement. No route recommendation was applied; retry the comparison.");
+            return measured;
+        }
         internal static async Task<CloudflareTraceResult> SwitchAsync(IWarpClient client, bool connected,
             Func<CancellationToken, Task<CloudflareTraceResult?>> state, CancellationToken token, int settlingMs = NetworkCalibrationProfile.SettlingMs, int pollingMs = 1000)
         {
@@ -83,12 +94,7 @@ namespace Bloxstrap.Networking
 
                 async Task ProbeVerifiedAsync(CloudflareTraceResult expected)
                 {
-                    string route = AdaptiveRegionService.RouteKey(expected);
-                    var measured = await probe(route, token);
-                    var after = await state(token);
-                    if (after?.WarpActive != expected.WarpActive || AdaptiveRegionService.RouteKey(after) != route)
-                        throw new IOException("The network route changed during measurement. No route recommendation was applied; retry the comparison.");
-                    samples.AddRange(measured);
+                    samples.AddRange(await RouteComparisonRunner.ProbeVerifiedAsync(expected, state, probe, token));
                 }
             }
             catch (Exception ex)

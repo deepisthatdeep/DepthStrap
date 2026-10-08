@@ -35,6 +35,6 @@ internal static class SystemTuningChecks
         var output = process.StandardOutput.ReadToEndAsync(); var error = process.StandardError.ReadToEndAsync();
         if (!process.WaitForExit(30000)) { process.Kill(); throw new TimeoutException("Tuning fixture exceeded its test budget."); }
         string result = output.GetAwaiter().GetResult();
-        check(process.ExitCode == 0 && result.Contains("PASS: 18 PowerShell fixture checks"), "PowerShell profile apply/restore fixtures: " + result + error.GetAwaiter().GetResult());
+        check(process.ExitCode == 0 && result.Contains("PASS: 22 PowerShell fixture checks"), "PowerShell profile apply/restore fixtures: " + result + error.GetAwaiter().GetResult());
     }
 }

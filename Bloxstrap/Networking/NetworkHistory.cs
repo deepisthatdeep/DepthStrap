@@ -48,6 +48,7 @@ namespace Bloxstrap.Networking
             App.Settings.Prop.CompetitivePreferredCity = "";
             App.Settings.Prop.CompetitiveFallbackCities.Clear();
             App.Settings.Prop.RegionCalibrationCompleted = false;
+            App.Settings.Prop.NetworkSetupVersion = 0;
             AdaptiveRegionService.ClearStatus();
             disk.Prop.AutomaticRegionalPreference = true;
             disk.Prop.PreferNorthAmericaOnly = disk.Prop.PreferEuropeOnly = false;

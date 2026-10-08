@@ -265,40 +265,52 @@ namespace Bloxstrap
 
             var processes = new List<Process>();
 
-            if (!String.IsNullOrEmpty(App.PlayerState.Prop.VersionGuid))
-                processes.AddRange(Process.GetProcessesByName(App.RobloxPlayerAppName));
-
-            if (App.IsStudioInstalled)
-                processes.AddRange(Process.GetProcessesByName(App.RobloxStudioAppName));
-
-            // prompt to shutdown roblox if its currently running
-            if (processes.Any())
+            try
             {
-                var result = Frontend.ShowMessageBox(
-                    Strings.Bootstrapper_Uninstall_RobloxRunning,
-                    MessageBoxImage.Information,
-                    MessageBoxButton.OKCancel,
-                    MessageBoxResult.OK
-                );
+                if (!String.IsNullOrEmpty(App.PlayerState.Prop.VersionGuid))
+                    processes.AddRange(Process.GetProcessesByName(Path.GetFileNameWithoutExtension(App.RobloxPlayerAppName)));
 
-                if (result != MessageBoxResult.OK)
-                {
-                    App.Terminate(ErrorCode.ERROR_CANCELLED);
-                    return;
-                }
+                if (App.IsStudioInstalled)
+                    processes.AddRange(Process.GetProcessesByName(Path.GetFileNameWithoutExtension(App.RobloxStudioAppName)));
 
-                try
+                // Stop before removing installation files if a running client cannot be closed.
+                if (processes.Any())
                 {
+                    var result = Frontend.ShowMessageBox(
+                        Strings.Bootstrapper_Uninstall_RobloxRunning,
+                        MessageBoxImage.Information,
+                        MessageBoxButton.OKCancel,
+                        MessageBoxResult.OK
+                    );
+
+                    if (result != MessageBoxResult.OK)
+                    {
+                        App.Terminate(ErrorCode.ERROR_CANCELLED);
+                        return;
+                    }
+
                     foreach (var process in processes)
                     {
+                        if (process.HasExited)
+                            continue;
+
                         process.Kill();
-                        process.Close();
+                        if (!process.WaitForExit(10000))
+                            throw new IOException("Roblox did not close before uninstalling.");
                     }
                 }
-                catch (Exception ex)
-                {
-                    App.Logger.WriteLine(LOG_IDENT, $"Failed to close process! {ex}");
-                }
+            }
+            catch (Exception ex)
+            {
+                App.Logger.WriteException(LOG_IDENT, ex);
+                Frontend.ShowMessageBox("Roblox could not be closed. Close all Roblox clients and try uninstalling again.", MessageBoxImage.Warning);
+                App.Terminate(ErrorCode.ERROR_INSTALL_FAILURE);
+                return;
+            }
+            finally
+            {
+                foreach (var process in processes)
+                    process.Dispose();
             }
 
             string robloxFolder = Path.Combine(Paths.Roblox);
@@ -346,7 +358,7 @@ namespace Bloxstrap
                 WindowsRegistry.RegisterStudioFileClass(studioPath, "-ide \"%1\"");
             }
 
-            Registry.CurrentUser.DeleteSubKey(App.ApisKey);
+            Registry.CurrentUser.DeleteSubKey(App.ApisKey, false);
 
             var cleanupSequence = new List<Action>
             {

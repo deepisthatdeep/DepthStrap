@@ -20,7 +20,7 @@
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            TaskCompletionSource taskCompletionSource = new();
+            TaskCompletionSource taskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             _releaseEvent = new ManualResetEventSlim();
             _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -65,7 +65,9 @@
                     }
                 },
                 state: null,
-                cancellationToken,
+                // The worker must run even if cancellation wins before it is scheduled;
+                // it owns completion of taskCompletionSource and the waiter cleanup.
+                CancellationToken.None,
                 TaskCreationOptions.LongRunning,
                 TaskScheduler.Default);
 

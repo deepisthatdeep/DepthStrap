@@ -36,6 +36,10 @@ $numeric = Property '*ReceiveBuffers' '256'; $numeric.ValidRegistryValues=@()
 $numeric.NumericParameterMinValue='64'; $numeric.NumericParameterMaxValue='2050'; $numeric.NumericParameterBaseValue='64'; $numeric.NumericParameterStepValue='64'
 Assert ((Get-TargetValue $numeric 'maximum' '*ReceiveBuffers') -eq '2048') 'Maximum respects driver numeric range and step'
 Assert (!(Test-PropertyValue $numeric '2050')) 'Unaligned driver values are rejected'
+$numeric.ValidRegistryValues=$null
+Assert ((Get-TargetValue $numeric 'maximum' '*ReceiveBuffers') -eq '2048') 'Null enum metadata still allows a supported numeric driver range'
+$numeric.ValidRegistryValues=@($null,'')
+Assert (Test-PropertyValue $numeric '256') 'Empty enum entries cannot hide valid numeric limits'
 $numeric.NumericParameterMaxValue='9999999999'
 Assert ($null -eq (Get-TargetValue $numeric 'maximum' '*ReceiveBuffers')) 'Implausible maxima are skipped instead of creating oversized allocations'
 $enum = Property '*NumRSSQueues'
@@ -86,4 +90,10 @@ $store=Store; $stats=Stats; Apply-PowerPlan 'Balanced' $store $stats
 $power=Get-PowerRecord $store; $script:active=$power.Original
 $stats=Stats; Restore-PowerPlan $store $stats
 Assert ($stats.Preserved -eq 1 -and $script:active -eq $power.Original) 'Power restoration preserves a later manually selected plan'
+function Import-Module { [CmdletBinding()]param([string]$Name) throw 'Fixture missing NetAdapter module' }
+Assert (@(Get-TuningAdapters).Count -eq 0) 'Unavailable NIC inspection does not prevent Windows power-plan operations'
+function Import-Module { [CmdletBinding()]param([string]$Name) }
+function Get-NetAdapter { [CmdletBinding()]param([switch]$Physical) return $adapter }
+Assert (@(Get-TuningAdapters).Count -eq 1) 'Available physical adapters remain eligible for supported tuning'
+Remove-Item Function:Import-Module,Function:Get-NetAdapter
 Write-Output "PASS: $script:checks PowerShell fixture checks. No hardware, Windows plans or machine registry were changed."

@@ -72,8 +72,9 @@ namespace Bloxstrap.Networking
                     progress?.Report("Testing the current connection; WARP comparison is unavailable…");
                     var current = await State(budget.Token);
                     var samples = new List<RoutingSample>();
-                    try { samples = await Probe(AdaptiveRegionService.RouteKey(current), budget.Token); }
+                    try { samples = await RouteComparisonRunner.ProbeVerifiedAsync(current, State, Probe, budget.Token); }
                     catch (OperationCanceledException) when (!token.IsCancellationRequested) { setupError += " Routing probes timed out."; }
+                    catch (IOException ex) { setupError += " " + ex.Message; }
                     run = new(null, samples, await State(CancellationToken.None), setupError.Length > 0 ? setupError : "WARP comparison was not completed. Accept Cloudflare's terms in network setup and retry. No automatic route recommendation was applied.");
                 }
                 progress?.Report("Checking region lookup and traceroute on the final route…");

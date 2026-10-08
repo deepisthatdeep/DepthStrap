@@ -28,7 +28,7 @@ namespace Bloxstrap.Roblox
         private const string GameJoiningUniversePattern = @"universeid:([0-9]+).*userid:([0-9]+)";
         // groups: 1=udmux ip, 2=udmux port, 3=rcc ip, 4=rcc port
         private const string GameJoiningUDMUXPattern = @"UDMUX Address = ([0-9\.]+), Port = ([0-9]+) \| RCC Server Address = ([0-9\.]+), Port = ([0-9]+)";
-        private const string GameJoinedEntryPattern = @"serverId: ([0-9\.]+)\|[0-9]+";
+        private const string GameJoinedEntryPattern = @"serverId: ([0-9\.]+)\|([0-9]+)";
         private const string GameMessageEntryPattern = @"\[BloxstrapRPC\] (.*)";
         private const string GameDisconnectReasonPattern = @"Sending disconnect with reason: (\d+)";
 
@@ -39,6 +39,9 @@ namespace Bloxstrap.Roblox
         private string? _joinAddress;
         private string? _confirmedAddress;
         internal bool SuppressAutoRejoin { get; set; }
+        internal TimeSpan AutoRejoinDelay { get; set; } = TimeSpan.FromSeconds(3);
+        internal Task AutoRejoinTask { get; private set; } = Task.CompletedTask;
+        internal Action<ActivityData>? RejoinRequested { get; set; }
 
         private static readonly string GameHistoryCachePath = Path.Combine(Paths.Cache, "GameHistory.json");
         public event EventHandler? OnHistoryUpdated;
@@ -193,16 +196,18 @@ namespace Bloxstrap.Roblox
 
             App.Logger.WriteLine(LOG_IDENT, $"Opened {LogLocation}");
 
-            using var streamReader = new StreamReader(logFileStream);
-
-            while (!IsDisposed)
+            using (logFileStream)
             {
-                string? log = await streamReader.ReadLineAsync();
-
-                if (log is null)
-                    await Task.Delay(1000);
-                else
-                    ReadLogEntry(log);
+                var lines = new LogLineBuffer();
+                byte[] buffer = new byte[4096];
+                while (!IsDisposed)
+                {
+                    // Roblox normally appends, but recover if a log is truncated in place.
+                    if (logFileStream.Length < logFileStream.Position) { logFileStream.Position = 0; lines.Reset(); }
+                    int read = await logFileStream.ReadAsync(buffer);
+                    if (read == 0) await Task.Delay(1000);
+                    else lines.Append(buffer.AsSpan(0, read), ReadLogEntry);
+                }
             }
         }
 
@@ -279,7 +284,7 @@ namespace Bloxstrap.Roblox
             }
         }
 
-        private async void ProcessPlayerLogEntry(string logMessage)
+        private void ProcessPlayerLogEntry(string logMessage)
         {
             const string LOG_IDENT = "ActivityWatcher::ProcessPlayerLogEntry";
 
@@ -287,15 +292,16 @@ namespace Bloxstrap.Roblox
                 {
                     var match = Regex.Match(logMessage, GameJoiningUniversePattern);
 
-                    if (match.Groups.Count != 3)
+                    if (!match.Success || !long.TryParse(match.Groups[1].Value, out long universe) || universe <= 0 ||
+                        !long.TryParse(match.Groups[2].Value, out long user) || user < 0)
                     {
                         App.Logger.WriteLine(LOG_IDENT, "Failed to assert format for game join universe entry");
                         App.Logger.WriteLine(LOG_IDENT, logMessage);
                         return;
                     }
 
-                    Data.UniverseId = Int64.Parse(match.Groups[1].Value);
-                    Data.UserId = Int64.Parse(match.Groups[2].Value);
+                    Data.UniverseId = universe;
+                    Data.UserId = user;
 
                     if (History.Any())
                     {
@@ -333,9 +339,8 @@ namespace Bloxstrap.Roblox
             if (logMessage.StartsWith(GameDisconnectReasonEntry))
             {
                 var match = Regex.Match(logMessage, GameDisconnectReasonPattern);
-                if (match.Success && match.Groups.Count == 2)
+                if (match.Success && int.TryParse(match.Groups[1].Value, out int reasonCode))
                 {
-                    int reasonCode = int.Parse(match.Groups[1].Value);
 
                     if (reasonCode == 1)
                     {
@@ -364,8 +369,9 @@ namespace Bloxstrap.Roblox
             if (logMessage.StartsWith(GameJoiningEntry))
             {
                 var match = Regex.Match(logMessage, GameJoiningEntryPattern);
-                if (!match.Success) return;
-                long place = long.Parse(match.Groups[2].Value);
+                if (!match.Success || !Guid.TryParse(match.Groups[1].Value, out _) ||
+                    !long.TryParse(match.Groups[2].Value, out long place) || place <= 0 ||
+                    !IPAddress.TryParse(match.Groups[3].Value, out _)) return;
                 string job = match.Groups[1].Value;
                 if (Data.PlaceId == place && Data.JobId == job) return;
                 if (InGame)
@@ -392,12 +398,15 @@ namespace Bloxstrap.Roblox
             if (Data.PlaceId != 0 && logMessage.StartsWith(GameJoiningUDMUXEntry))
             {
                 var match = Regex.Match(logMessage, GameJoiningUDMUXPattern);
-                if (!match.Success || match.Groups[3].Value != _joinAddress) return;
+                if (!match.Success || match.Groups[3].Value != _joinAddress ||
+                    !IPAddress.TryParse(match.Groups[1].Value, out _) ||
+                    !int.TryParse(match.Groups[2].Value, out int udmuxPort) || udmuxPort is < 1 or > 65535 ||
+                    !int.TryParse(match.Groups[4].Value, out int rccPort) || rccPort is < 1 or > 65535) return;
                 bool updateConfirmed = InGame && Data.UdmuxAddress != match.Groups[1].Value;
                 Data.UdmuxAddress = match.Groups[1].Value;
-                Data.UdmuxPort = int.Parse(match.Groups[2].Value);
+                Data.UdmuxPort = udmuxPort;
                 Data.RccAddress = match.Groups[3].Value;
-                Data.RccPort = int.Parse(match.Groups[4].Value);
+                Data.RccPort = rccPort;
                 Data.MachineAddress = Data.UdmuxAddress;
                 TryConfirmJoin();
                 if (updateConfirmed) OnConnectionUpdated?.Invoke(this, EventArgs.Empty);
@@ -406,7 +415,8 @@ namespace Bloxstrap.Roblox
             if (!InGame && Data.PlaceId != 0 && logMessage.StartsWith(GameJoinedEntry))
             {
                 var match = Regex.Match(logMessage, GameJoinedEntryPattern);
-                if (!match.Success) return;
+                if (!match.Success || !IPAddress.TryParse(match.Groups[1].Value, out _) ||
+                    !int.TryParse(match.Groups[2].Value, out int port) || port is < 1 or > 65535) return;
                 _confirmedAddress = match.Groups[1].Value;
                 TryConfirmJoin();
                 return;
@@ -452,22 +462,9 @@ namespace Bloxstrap.Roblox
 
                     if (App.Settings.Prop.AutoRejoin && !SuppressAutoRejoin)
                     {
-                        await Task.Delay(3000);
-
-                        if (_shouldAutoRejoin && !SuppressAutoRejoin)
-                        {
-                            autoRejoinData.RejoinServer(false);
-
-                            // we use this because can you imagine having 5 accs open and we close all of them cuz 1 dced ?
-                            CloseProcess(_robloxPID);
-                        }
-                        else
-                        {
-                            App.Logger.WriteLine(LOG_IDENT, "No inactivity detected within 3 seconds, skipping auto-rejoin");
-                        }
+                        AutoRejoinTask = TryAutoRejoinAsync(autoRejoinData, Data);
                     }
-
-                    _shouldAutoRejoin = false;
+                    else _shouldAutoRejoin = false;
                 }
                 else if (logMessage.StartsWith(GameMessageEntry))
                 {
@@ -547,6 +544,22 @@ namespace Bloxstrap.Roblox
                     LastRPCRequest = DateTime.Now;
                 }
             }
+        }
+
+        private async Task TryAutoRejoinAsync(ActivityData previous, ActivityData idle)
+        {
+            try
+            {
+                await Task.Delay(AutoRejoinDelay);
+                // A delayed reconnect cannot close a replacement game, a pending join, or
+                // a client whose watcher was disposed while the timer was waiting.
+                if (IsDisposed || SuppressAutoRejoin || !App.Settings.Prop.AutoRejoin ||
+                    !ReferenceEquals(Data, idle) || InGame || Data.PlaceId != 0 || !_shouldAutoRejoin) return;
+                if (RejoinRequested is not null) RejoinRequested(previous);
+                else { previous.RejoinServer(false); CloseProcess(_robloxPID); }
+            }
+            catch (Exception ex) { App.Logger.WriteException("ActivityWatcher::AutoRejoin", ex); }
+            finally { if (ReferenceEquals(Data, idle)) _shouldAutoRejoin = false; }
         }
 
         private void TryConfirmJoin()

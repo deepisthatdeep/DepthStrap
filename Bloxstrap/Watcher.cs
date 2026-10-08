@@ -102,14 +102,13 @@ namespace Bloxstrap
 
         public void KillRobloxProcess() => CloseProcess(_watcherData!.ProcessId, true);
 
-        private async Task<bool> AutoLogBadRegionAsync(CompetitiveNetworkEvent result)
+        private Task<bool> AutoLogBadRegionAsync(CompetitiveNetworkEvent result)
         {
-            if (_isDisposed || ActivityWatcher is null || _watcherData is null) return false;
+            if (_isDisposed || ActivityWatcher is null || _watcherData is null) return Task.FromResult(false);
             var classification = CompetitiveRegionService.Classify(result.Location, source: result.RegionSource);
             if (!BadRegionAutoLog.ShouldLeave(result, App.Settings.Prop, ActivityWatcher.Data.JobId, DateTime.Now, classification,
-                _watcherData.AutoLogRecovery, ActivityWatcher.Data.TimeJoined)) return false;
-            // Preserve the measurements and reason before this client's monitor stops.
-            await CompetitiveSessionLogger.WriteNetworkEventAsync(result, CancellationToken.None);
+                _watcherData.AutoLogRecovery, ActivityWatcher.Data.TimeJoined)) return Task.FromResult(false);
+            bool left = false;
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
             {
                 if (_isDisposed || !ActivityWatcher.InGame || ActivityWatcher.Data.UniverseId != CompetitiveRegionService.DeepwokenUniverseId ||
@@ -129,6 +128,7 @@ namespace Bloxstrap
                     // manual relaunches and other clients share this conservative cooldown.
                     if (!AutoLogHomeHandoff.ReserveRetry())
                     {
+                        Interlocked.Exchange(ref _autoLogStarted, 0);
                         player.Dispose();
                         CompetitiveSessionLogger.Write("AUTOLOG: recovery cooldown active; leaving this client running.");
                         return;
@@ -145,11 +145,17 @@ namespace Bloxstrap
                         new UI.Elements.Dialogs.BadRegionAlertWindow("Autolog could not leave", "Roblox did not accept a normal window close. Leave the game manually.").Show();
                         return;
                     }
+                    left = true;
                     CompetitiveSessionLogger.Write($"AUTOLOG: region={result.Location}; job={result.JobId}; returning Player pid={_watcherData.ProcessId} to Home; Deepwoken rejoin={rejoin}");
                     var ownedPlayer = player;
                     _ = Task.Run(async () =>
                     {
-                        try { await ReturnHomeAsync(ownedPlayer, version, rejoin); }
+                        try
+                        {
+                            // The watcher remains alive for this task after the client exits.
+                            await CompetitiveSessionLogger.WriteNetworkEventAsync(result, CancellationToken.None);
+                            await ReturnHomeAsync(ownedPlayer, version, rejoin);
+                        }
                         catch (Exception ex)
                         {
                             App.Logger.WriteException("Watcher::AutoLogHome", ex);
@@ -165,8 +171,8 @@ namespace Bloxstrap
                     player?.Dispose(); App.Logger.WriteException("Watcher::AutoLog", ex);
                 }
             });
-            // The event is already persisted, even if the user changed jobs or close failed.
-            return true;
+            // Cooldown, changed settings or a rejected close must not suppress diagnostics.
+            return Task.FromResult(left);
         }
 
         private async Task ReturnHomeAsync(Process player, string version, bool rejoin)
@@ -248,11 +254,14 @@ namespace Bloxstrap
 
             try
             {
-                while (!_cancellationTokenSource.Token.IsCancellationRequested &&
-                       Utilities.GetProcessesSafe().Any(x => x.Id == _watcherData.ProcessId))
-                {
-                    await Task.Delay(1000, _cancellationTokenSource.Token);
-                }
+                // Watch this client directly. A failed system-wide process enumeration
+                // must not be mistaken for its exit and disable the live monitor.
+                using var player = Process.GetProcessById(_watcherData.ProcessId);
+                await player.WaitForExitAsync(_cancellationTokenSource.Token);
+            }
+            catch (ArgumentException)
+            {
+                App.Logger.WriteLine("Watcher::Run", "Player exited before its process handle could be opened");
             }
             catch (OperationCanceledException)
             {

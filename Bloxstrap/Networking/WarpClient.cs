@@ -51,7 +51,10 @@ namespace Bloxstrap.Networking
                 install.ArgumentList.Add("/i"); install.ArgumentList.Add(package); install.ArgumentList.Add("/passive"); install.ArgumentList.Add("/norestart");
                 // MSI is a Windows installer UI; it owns elevation, progress and cancellation.
                 using var process = Process.Start(install) ?? throw new IOException("Windows Installer could not be started.");
-                await process.WaitForExitAsync(token);
+                // Once MSI has started, keep its verified package and the operation gate
+                // alive until Windows Installer finishes, even if the dialog is closed.
+                await process.WaitForExitAsync();
+                token.ThrowIfCancellationRequested();
                 if (process.ExitCode is not (0 or 3010)) throw new IOException($"WARP installation did not complete (Windows Installer code {process.ExitCode}).");
                 for (int i = 0; i < 20 && !File.Exists(CliPath); i++) await Task.Delay(500, token);
             }

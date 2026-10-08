@@ -109,6 +109,7 @@ internal static class Program
         
         app.DispatcherUnhandledException += (_, e) => { Console.Error.WriteLine(e.Exception); Environment.Exit(1); };
         Console.WriteLine("Resources loaded");
+        if (args.Contains("--audit-only")) { ReliabilityAuditChecks.Run(Check); Console.WriteLine($"PASS: {_checks} audit checks"); return; }
         var bindingErrors = new BindingErrors();
         PresentationTraceSources.DataBindingSource.Switch.Level = SourceLevels.Error;
         PresentationTraceSources.DataBindingSource.Listeners.Add(bindingErrors);
@@ -125,6 +126,7 @@ internal static class Program
         ServerBrowserChecks.Run(Check);
         if (args.Contains("--verify-public-network")) ServerBrowserChecks.VerifyPublicNetwork(Check);
         WatcherChecks.Run(Check);
+        ReliabilityAuditChecks.Run(Check);
         HistoryChecks.Run(Check);
         VerifyThemes(app);
         if (args.Contains("--calibrate"))

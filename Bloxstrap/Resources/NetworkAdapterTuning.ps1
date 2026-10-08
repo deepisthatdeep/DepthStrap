@@ -18,7 +18,8 @@ function Get-TuningPlan([string]$Profile) {
 
 function Test-PropertyValue($Property, [string]$Value) {
     if ($Value -notmatch '^\d{1,10}$') { return $false }
-    if (@($Property.ValidRegistryValues).Count -gt 0) { return @($Property.ValidRegistryValues) -contains $Value }
+    $valid = @($Property.ValidRegistryValues | Where-Object { $null -ne $_ -and [string]$_ -ne '' })
+    if ($valid.Count -gt 0) { return $valid -contains $Value }
     $min = 0L; $max = 0L; $step = 0L; $base = 0L
     if (![long]::TryParse([string]$Property.NumericParameterMinValue,[ref]$min) -or
         ![long]::TryParse([string]$Property.NumericParameterMaxValue,[ref]$max) -or
@@ -50,6 +51,13 @@ function Get-TargetValue($Property, [string]$Target, [string]$Keyword) {
 function Get-Properties($Adapter) {
     return @(Get-NetAdapterAdvancedProperty -Name ([WildcardPattern]::Escape([string]$Adapter.Name)) -AllProperties -ErrorAction Stop |
         Where-Object Name -CEQ ([string]$Adapter.Name))
+}
+function Get-TuningAdapters {
+    # Windows power-plan restore/apply also works when NIC inspection is unavailable.
+    try {
+        Import-Module NetAdapter -ErrorAction Stop
+        return @(Get-NetAdapter -Physical -ErrorAction Stop)
+    } catch { return @() }
 }
 function Get-Current($Property) {
     $values = @($Property.RegistryValue)
@@ -187,8 +195,7 @@ function Apply-Settings($Profile,$Store,$Adapters,$Stats) {
 
 $store = $null; $gate = $null; $ownsGate = $false
 try {
-    Import-Module NetAdapter -ErrorAction Stop
-    $adapters = @(Get-NetAdapter -Physical -ErrorAction Stop)
+    $adapters = @(Get-TuningAdapters)
     if ($Mode -eq 'Preview') {
         $preview = @()
         foreach ($adapter in @($adapters | Where-Object Status -EQ 'Up')) {
