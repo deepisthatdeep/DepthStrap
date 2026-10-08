@@ -1,4 +1,4 @@
-# DepthStrap 1.0.13
+# DepthStrap 1.0.14
 
 A Windows Roblox launcher with a Crimson Contract theme, a custom stone and crimson icon, Competitive and Balanced profiles, and local server-route learning.
 
@@ -17,6 +17,8 @@ Version 1.0.3 repairs warning settings disabled by an older failed datacenter-re
 Version 1.0.4 preserves settings after unreadable or corrupt file loads, serializes cooperating settings readers and writers, and adds local Git privacy guards. Autolog accepts delayed region lookups only while their original join remains active. Custom app/Roblox fonts are validated as usable font faces, retained locally, and applied or reset only after settings save successfully.
 
 Version 1.0.5 makes Roblox XML saves and imports atomic and validates imports before replacement. Failed saves preserve the file and quality lock, stop save/launch success flows, and retain preset backups for retry. Recent match history reads only the required tail in the background, cancels on page exit, and reports loading, empty and unavailable states.
+
+Version 1.0.14 cooperates with existing mutex reservations from other multi-client launchers, retaining handles and acquiring ownership when released. Helper startup allows 30 seconds, observes cancellation and reports helper exit/failure promptly. If preparation fails, DepthStrap offers a normal launch when no Player is running or cancels safely when existing sessions are present, with recovery instructions instead of an exception screen. No foreign process handles are closed. Real Account Manager interoperability still needs confirmation on the affected computer.
 
 Version 1.0.13 preserves imported FastFlag names and scalar values, including shortened keys, case-distinct keys and place/datacenter filters. It supersedes 1.0.12's alias conversion: short and full keys with the same suffix stay separate, so neither entry is lost or assigned a guessed prefix. Null entries are skipped as in the upstream editors. Explicit fullscreen flags survive settings reload, and string values equal to their flag name can still be edited. Pasted object members, comments and trailing commas are supported; malformed trailing content and exact duplicate keys remain errors. Imports allow up to 50,000 entries within a 16 MB document. Roblox decides which flags the installed build supports; Competitive continues to apply its managed rendering overrides while enabled.
 

@@ -310,7 +310,12 @@ namespace Bloxstrap
             {
                 // await because some peoples pc are so ass that roblox opens before this finishes causing an error due to the event
                 if (App.Settings.Prop.MultiInstanceLaunching)
-                    await LaunchMultiInstanceWatcher();
+                    if (!await LaunchMultiInstanceWatcher())
+                    {
+                        await mutex.ReleaseAsync();
+                        Dialog?.CloseBootstrapper();
+                        return;
+                    }
             }
 
             if (!App.LaunchSettings.NoLaunchFlag.Active && !_cancelTokenSource.IsCancellationRequested)
@@ -614,13 +619,28 @@ namespace Bloxstrap
             }
         }
 
-        private static async Task LaunchMultiInstanceWatcher()
+        private async Task<bool> LaunchMultiInstanceWatcher()
         {
-            if (MultiInstanceWatcher.IsReady()) return;
+            if (MultiInstanceWatcher.IsReady()) return true;
             using var ready = new EventWaitHandle(false, EventResetMode.ManualReset, MultiInstanceWatcher.ReadyEventName);
-            using var helper = Process.Start(new ProcessStartInfo(Paths.Process, "-multiinstancewatcher") { UseShellExecute = false, CreateNoWindow = true });
-            if (helper is null || !await Task.Run(() => ready.WaitOne(TimeSpan.FromSeconds(8))))
-                throw new InvalidOperationException("Multi-client setup did not become ready. Close all Roblox clients, then try again. Existing clients have been left open.");
+            using var failed = new EventWaitHandle(false, EventResetMode.ManualReset, MultiInstanceWatcher.FailedEventName);
+            failed.Reset();
+            try
+            {
+                using var helper = Process.Start(new ProcessStartInfo(Paths.Process, "-multiinstancewatcher") { UseShellExecute = false, CreateNoWindow = true });
+                if (helper is not null && await MultiInstanceWatcher.WaitForReadyAsync(() => ready.WaitOne(0), () => failed.WaitOne(0),
+                    () => helper.HasExited, TimeSpan.FromSeconds(30), _cancelTokenSource.Token)) return true;
+            }
+            catch (OperationCanceledException) when (_cancelTokenSource.IsCancellationRequested) { return false; }
+            catch (Exception ex) { App.Logger.WriteException("Bootstrapper::LaunchMultiInstanceWatcher", ex); }
+            if (_cancelTokenSource.IsCancellationRequested) return false;
+            const string message = "DepthStrap could not reserve Roblox's multi-client startup objects. Another launcher (such as Roblox Account Manager), a running client, or a blocked helper may be using them. Close other multi-client tools and Roblox clients, then retry, or turn off Multi-Instance Launching in DepthStrap. Your saved setting is unchanged.";
+            if (InstallPackagePipeline.HasProcess("RobloxPlayerBeta"))
+            {
+                Frontend.ShowMessageBox(message + "\n\nThis launch was cancelled to protect your existing Roblox sessions. No clients were closed.", MessageBoxImage.Warning);
+                return false;
+            }
+            return Frontend.ShowMessageBox(message + "\n\nLaunch Roblox normally this time?", MessageBoxImage.Warning, MessageBoxButton.YesNo) == MessageBoxResult.Yes;
         }
 
         private async void StartRoblox()

@@ -3,6 +3,44 @@ namespace Bloxstrap
     internal static class MultiInstanceWatcher
     {
         internal const string ReadyEventName = "DepthStrap-MultiInstanceReady";
+        internal const string FailedEventName = "DepthStrap-MultiInstanceFailed";
+
+        internal sealed class Reservation : IDisposable
+        {
+            private readonly Mutex _mutex;
+            internal bool Owned { get; private set; }
+            internal Reservation(string name)
+            {
+                _mutex = new Mutex(false, name);
+                try { TryOwn(); }
+                catch { _mutex.Dispose(); throw; }
+            }
+            internal void TryOwn()
+            {
+                if (Owned) return;
+                try { Owned = _mutex.WaitOne(0); }
+                catch (AbandonedMutexException) { Owned = true; }
+            }
+            public void Dispose()
+            {
+                if (Owned) _mutex.ReleaseMutex();
+                _mutex.Dispose();
+            }
+        }
+
+        internal static async Task<bool> WaitForReadyAsync(Func<bool> ready, Func<bool> failed, Func<bool> exited,
+            TimeSpan timeout, CancellationToken token)
+        {
+            var elapsed = Stopwatch.StartNew();
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                if (ready()) return true;
+                if (failed() || exited()) return ready();
+                if (elapsed.Elapsed >= timeout) return false;
+                await Task.Delay(100, token);
+            }
+        }
         public static bool IsReady()
         {
             try { using var ready = EventWaitHandle.OpenExisting(ReadyEventName); return ready.WaitOne(0); }
@@ -23,21 +61,27 @@ namespace Bloxstrap
         public static void Run()
         {
             // Ownership stays on this thread for the lifetime of every launched Player.
-            Mutex? singleton = null, singletonEvent = null;
+            Reservation? singleton = null, singletonEvent = null;
             using var guard = new Mutex(false, "DepthStrap-MultiInstanceWatcher");
             bool ownsGuard;
             try { ownsGuard = guard.WaitOne(0); }
             catch (AbandonedMutexException) { ownsGuard = true; }
             if (!ownsGuard) return;
             using var ready = new EventWaitHandle(false, EventResetMode.ManualReset, ReadyEventName);
+            using var failed = new EventWaitHandle(false, EventResetMode.ManualReset, FailedEventName);
+            ready.Reset(); failed.Reset();
             try
             {
-                singleton = Acquire("ROBLOX_singletonMutex");
-                singletonEvent = Acquire("ROBLOX_singletonEvent");
+                singleton = new Reservation("ROBLOX_singletonMutex");
+                singletonEvent = new Reservation("ROBLOX_singletonEvent");
+                App.Logger.WriteLine("MultiInstanceWatcher", singleton.Owned && singletonEvent.Owned
+                    ? "Reserved both singleton mutexes."
+                    : "Sharing existing singleton mutex reservations with another launcher; retaining handles and taking ownership when released.");
                 ready.Set();
                 var elapsed = Stopwatch.StartNew(); bool seenPlayer = false;
                 while (true)
                 {
+                    singleton.TryOwn(); singletonEvent.TryOwn();
                     int count = -1;
                     try
                     {
@@ -52,12 +96,12 @@ namespace Bloxstrap
                     Thread.Sleep(500);
                 }
             }
-            catch (Exception ex) { App.Logger.WriteException("MultiInstanceWatcher", ex); }
+            catch (Exception ex) { failed.Set(); App.Logger.WriteException("MultiInstanceWatcher", ex); }
             finally
             {
                 ready.Reset();
-                if (singletonEvent is not null) { singletonEvent.ReleaseMutex(); singletonEvent.Dispose(); }
-                if (singleton is not null) { singleton.ReleaseMutex(); singleton.Dispose(); }
+                singletonEvent?.Dispose();
+                singleton?.Dispose();
                 guard.ReleaseMutex();
             }
         }

@@ -182,6 +182,47 @@ internal static class FeatureChecks
             try { using var mutex = MultiInstanceWatcher.Acquire(name); mutex.ReleaseMutex(); } catch (WaitHandleCannotBeOpenedException) { rejected = true; }
             check(rejected, "A preexisting Roblox-style event collision fails instead of claiming multi-client readiness");
         }
+        using (var owner = MultiInstanceWatcher.Acquire(name))
+        {
+            using var shared = new ManualResetEventSlim();
+            using var released = new ManualResetEventSlim();
+            bool sharedBeforeRelease = false, ownedAfterRelease = false;
+            var borrower = Task.Run(() =>
+            {
+                using var reservation = new MultiInstanceWatcher.Reservation(name);
+                sharedBeforeRelease = !reservation.Owned;
+                shared.Set();
+                if (!released.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException();
+                reservation.TryOwn();
+                ownedAfterRelease = reservation.Owned;
+            });
+            if (!shared.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException();
+            owner.ReleaseMutex(); released.Set(); borrower.GetAwaiter().GetResult();
+            check(sharedBeforeRelease && ownedAfterRelease,
+                "Multi-client reservations cooperate with another launcher's owner and acquire ownership after it releases");
+        }
+        using (var incompatible = new EventWaitHandle(false, EventResetMode.ManualReset, name))
+        {
+            bool rejected = false;
+            try { using var reservation = new MultiInstanceWatcher.Reservation(name); } catch (WaitHandleCannotBeOpenedException) { rejected = true; }
+            check(rejected, "Cooperative reservations still reject incompatible event objects");
+        }
+        Task.Run(async () =>
+        {
+            int polls = 0;
+            check(await MultiInstanceWatcher.WaitForReadyAsync(() => ++polls >= 4, () => false, () => false, TimeSpan.FromSeconds(2), CancellationToken.None),
+                "Helper startup waits for delayed readiness");
+            check(!await MultiInstanceWatcher.WaitForReadyAsync(() => false, () => true, () => false, TimeSpan.FromSeconds(2), CancellationToken.None),
+                "Explicit helper failure returns promptly");
+            check(!await MultiInstanceWatcher.WaitForReadyAsync(() => false, () => false, () => true, TimeSpan.FromSeconds(2), CancellationToken.None),
+                "An exited helper does not become a generic timeout");
+            check(!await MultiInstanceWatcher.WaitForReadyAsync(() => false, () => false, () => false, TimeSpan.Zero, CancellationToken.None),
+                "Helper startup has a bounded timeout");
+            bool cancelled = false;
+            try { await MultiInstanceWatcher.WaitForReadyAsync(() => false, () => false, () => false, TimeSpan.FromSeconds(2), new CancellationToken(true)); }
+            catch (OperationCanceledException) { cancelled = true; }
+            check(cancelled, "Helper startup observes launch cancellation");
+        }).GetAwaiter().GetResult();
         App.Settings.Prop.WarnOnBadChimeRegion = false; App.Settings.Prop.LogCompetitiveSessions = true;
         var bad = new CompetitiveRegionResult { Timestamp = DateTime.Now, IsDeepwoken = true, JobId = "bad-fixture", Location = "Toronto, Canada", Quality = RegionQuality.Bad };
         CompetitiveSessionLogger.WriteBadRegionAsync(bad).GetAwaiter().GetResult();
