@@ -127,6 +127,18 @@ internal static class NetworkChecks
             "Initialization gives each route three longer passes, 24 probes, settling time and a 45-minute total budget");
         var parsed = FastFlagImport.Parse("{\"FFlagDebugSkyGray\":true,\"FIntDebugForceMSAASamples\":1}");
         check(parsed.Count == 2 && parsed["FIntDebugForceMSAASamples"] == "1", "FastFlags accepts scalar JSON values");
+        var legacy = FastFlagImport.ParseDetailed("{\"CSGLevelOfDetailSwitchingDistance\":0,\"DebugDisplayFPS\":false,\"FFlagDebugDisplayFPS\":true,\"UnknownShortName\":1}");
+        check(legacy.Flags["DFIntCSGLevelOfDetailSwitchingDistance"] == "0" && legacy.Flags["FFlagDebugDisplayFPS"] == "True" &&
+            legacy.Resolved == 2 && legacy.AliasConflicts == 1 && legacy.Unresolved.SequenceEqual(new[] { "UnknownShortName" }),
+            "Legacy aliases resolve from known presets or explicit imported names, preserve explicit values and report unknown names");
+        var reversed = FastFlagImport.ParseDetailed("{\"FFlagDebugDisplayFPS\":true,\"DebugDisplayFPS\":false}");
+        check(reversed.Flags["FFlagDebugDisplayFPS"] == "True" && reversed.AliasConflicts == 1,
+            "Explicit full-name import values win alias conflicts independently of JSON property order");
+        var ambiguous = FastFlagImport.ParseDetailed("{\"FFlagExample\":true,\"DFFlagExample\":false,\"Example\":true}");
+        check(ambiguous.Flags.Count == 2 && ambiguous.Unresolved.SequenceEqual(new[] { "Example" }),
+            "Ambiguous shortened FastFlag names are reported without guessing static or dynamic prefixes");
+        check(FastFlagImport.Parse("{\"FFlagUnknownFutureFlag\":true}").ContainsKey("FFlagUnknownFutureFlag"),
+            "Full names remain importable without a current online flag registry");
         foreach (string input in new[] { "[]", "{\"FFlagFoo\":{}}", "{\"bad name\":1}", "{\"FFlagFoo\":1,\"FFlagFoo\":2}" })
         {
             bool rejected = false;

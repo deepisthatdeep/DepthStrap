@@ -38,6 +38,14 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Length == 3 && args[0] == "--convert-fastflags")
+        {
+            var import = FastFlagImport.ParseDetailed(File.ReadAllText(args[1]));
+            File.WriteAllText(args[2], JsonSerializer.Serialize(import.Flags, new JsonSerializerOptions { WriteIndented = true }));
+            Console.WriteLine($"Resolved file: {import.Flags.Count} flags; {import.Resolved} aliases; {import.AliasConflicts} explicit-value conflicts; {import.Unresolved.Count} unresolved names.");
+            Console.WriteLine(string.Join(", ", import.Unresolved));
+            return;
+        }
         if (args.Length == 4 && args[0] == "--backup-worker")
         {
             Paths.Initialize(args[1]);

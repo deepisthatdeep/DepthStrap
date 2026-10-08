@@ -1,4 +1,4 @@
-# DepthStrap 1.0.11
+# DepthStrap 1.0.12
 
 A Windows Roblox launcher with a Crimson Contract theme, a custom stone and crimson icon, Competitive and Balanced profiles, and local server-route learning.
 
@@ -17,6 +17,8 @@ Version 1.0.3 repairs warning settings disabled by an older failed datacenter-re
 Version 1.0.4 preserves settings after unreadable or corrupt file loads, serializes cooperating settings readers and writers, and adds local Git privacy guards. Autolog accepts delayed region lookups only while their original join remains active. Custom app/Roblox fonts are validated as usable font faces, retained locally, and applied or reset only after settings save successfully.
 
 Version 1.0.5 makes Roblox XML saves and imports atomic and validates imports before replacement. Failed saves preserve the file and quality lock, stop save/launch success flows, and retain preset backups for retry. Recent match history reads only the required tail in the background, cancels on page exit, and reports loading, empty and unavailable states.
+
+Version 1.0.12 imports mixed legacy FastFlag exports. Shortened names resolve only when a built-in preset or a full name in the same file identifies one exact prefix. Explicit full-name values take priority over conflicting shortened entries regardless of order. Unresolved names are listed for review before importing the rest; no prefixes are guessed and the original file is unchanged.
 
 Version 1.0.11 enables verified stable app updates from this repository, replaces executables atomically, validates the advertised app version, and preserves the existing installed app on replacement failure. Roblox installation and repair now stop while the target product is running rather than terminating Player sessions. App registration refreshes paths after relocation, and client registration uses the actual launch directory, including offline and background-update launches. Publish a higher numeric version tag (for example v1.0.12) as the latest stable GitHub Release with a DepthStrap.exe asset; source pushes alone do not update installed copies. Publish as a draft and finish uploading assets before making it public.
 
