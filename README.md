@@ -1,4 +1,6 @@
-# DepthStrap 1.0.15
+# DepthStrap 1.0.16
+
+Version 1.0.16 fixes live session parsing when Roblox appends an incomplete log line, ignores malformed join records, and cancels delayed reconnects when a replacement join has started. The watcher now follows its own client process without relying on system-wide enumeration. Autolog cooldown and rejected-close cases retain diagnostics. Temporary route lookup failures preserve learned region preferences; Reset Network clears the active setup marker; current-route tests reject measurements made across a route change. Installer cancellation waits for an active WARP installation to finish, and uninstall detects running Roblox clients before removing files. Adapter tuning accepts valid numeric driver ranges and Windows power-plan operations can continue when adapter inspection is unavailable.
 
 A Windows Roblox launcher with a Crimson Contract theme, a custom stone and crimson icon, Competitive and Balanced profiles, and local server-route learning.
 

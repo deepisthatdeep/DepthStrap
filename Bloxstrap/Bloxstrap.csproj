@@ -9,8 +9,8 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>True</UseWindowsForms>
     <ApplicationIcon>DepthStrap.ico</ApplicationIcon>
-    <Version>1.0.15</Version>
-    <FileVersion>1.0.15</FileVersion>
+    <Version>1.0.16</Version>
+    <FileVersion>1.0.16</FileVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
