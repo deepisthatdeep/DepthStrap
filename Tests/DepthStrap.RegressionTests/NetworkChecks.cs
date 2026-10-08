@@ -148,6 +148,7 @@ internal static class NetworkChecks
         fixture["DFIntCasesensitive"] = "002";
         fixture["FStringLongValue"] = new string('a', 8192);
         fixture["FFlagUnknownFutureFlag"] = "True";
+        fixture["FFlagHandleAltEnterFullscreenManually"] = "True";
         for (int i = 0; i < 11_000; i++) fixture["FFlagBulk" + i] = "False";
         var complete = FastFlagImport.Parse(JsonSerializer.Serialize(fixture));
         check(complete.Count == fixture.Count && fixture.All(x => complete[x.Key] == x.Value),
@@ -158,10 +159,17 @@ internal static class NetworkChecks
         finally { App.FastFlags.suspendUndoSnapshot = false; }
         App.FastFlags.Save();
         App.FastFlags.Prop.Clear();
+        bool originalAltSetting = App.Settings.Prop.UseAltManually;
+        App.Settings.Prop.UseAltManually = true;
         App.FastFlags.Load();
+        App.Settings.Prop.UseAltManually = originalAltSetting;
         var roundTrip = FastFlagImport.Parse(File.ReadAllText(App.FastFlags.FileLocation));
         check(roundTrip.Count == fixture.Count && fixture.All(x => roundTrip[x.Key] == x.Value) && fixture.All(x => App.FastFlags.GetValue(x.Key) == x.Value),
             "Compatible imported flags survive the production manager save, reload and export unchanged");
+        App.FastFlags.SetValue("FStringEditable", "FStringEditable");
+        App.FastFlags.SetValue("FStringEditable", "replacement");
+        check(App.FastFlags.GetValue("FStringEditable") == "replacement",
+            "An imported string equal to its flag name can still be changed");
         App.FastFlags.Prop.Clear(); App.FastFlags.Save();
         var members = FastFlagImport.Parse("\uFEFF \"FFlagExample\":\"True\", // comment\n \"DFIntExample\":-1,");
         check(members.Count == 2 && members["FFlagExample"] == "True" && members["DFIntExample"] == "-1",

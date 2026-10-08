@@ -121,7 +121,7 @@ namespace Bloxstrap
             {
                 if (Prop.ContainsKey(key))
                 {
-                    if (key == Prop[key]!.ToString())
+                    if (value.ToString() == Prop[key]?.ToString())
                         return;
 
                     App.Logger.WriteLine(LOG_IDENT, $"Changing of '{key}' from '{Prop[key]}' to '{value}' is pending");
@@ -215,7 +215,7 @@ namespace Bloxstrap
 
             if (App.Settings.Prop.UseAltManually)
             {
-                if (GetPreset("Rendering.ManualFullscreen") != "False")
+                if (GetPreset("Rendering.ManualFullscreen") is null)
                     SetPreset("Rendering.ManualFullscreen", "False");
             }
 
