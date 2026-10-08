@@ -42,8 +42,8 @@ internal static class Program
         {
             var import = FastFlagImport.ParseDetailed(File.ReadAllText(args[1]));
             File.WriteAllText(args[2], JsonSerializer.Serialize(import.Flags, new JsonSerializerOptions { WriteIndented = true }));
-            Console.WriteLine($"Resolved file: {import.Flags.Count} flags; {import.Resolved} aliases; {import.AliasConflicts} explicit-value conflicts; {import.Unresolved.Count} unresolved names.");
-            Console.WriteLine(string.Join(", ", import.Unresolved));
+            Console.WriteLine($"Preserved file: {import.Flags.Count} flags; {import.UnprefixedNames.Count} names without recognized prefixes; {import.SkippedNulls} null values skipped.");
+            Console.WriteLine(string.Join(", ", import.UnprefixedNames));
             return;
         }
         if (args.Length == 4 && args[0] == "--backup-worker")

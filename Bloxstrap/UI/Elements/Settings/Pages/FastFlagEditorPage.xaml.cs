@@ -26,16 +26,8 @@ namespace Bloxstrap.UI.Elements.Settings.Pages
         private void ApplyJson(string json)
         {
             var import = FastFlagImport.ParseDetailed(json); // validate the complete import before mutating any flags
-            if (import.Unresolved.Count > 0 && Frontend.ShowMessageBox(
-                $"{import.Flags.Count} flags can be imported. These {import.Unresolved.Count} shortened names could not be resolved without guessing a prefix:\n\n" +
-                string.Join("\n", import.Unresolved.Take(20)) + (import.Unresolved.Count > 20 ? "\n…" : "") +
-                "\n\nImport the resolved flags and leave these entries out? The original file is unchanged.",
-                MessageBoxImage.Warning, MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
             var parsed = import.Flags;
-            if (parsed.Count == 0) throw new InvalidDataException("No full FastFlag names could be resolved. Add the prefixes before importing.");
-            if (import.AliasConflicts > 0 && Frontend.ShowMessageBox(
-                $"{import.AliasConflicts} shortened entries conflict with explicit full-name entries in this file. Keep the explicit full-name values?",
-                MessageBoxImage.Question, MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+            if (parsed.Count == 0) throw new InvalidDataException("No non-null flag values were found.");
             int conflicts = parsed.Keys.Count(App.FastFlags.Prop.ContainsKey);
             if (conflicts > 0 && Frontend.ShowMessageBox($"Replace {conflicts} existing flag values with this import?", MessageBoxImage.Question, MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
             App.FastFlags.SaveUndoSnapshot();
@@ -43,7 +35,7 @@ namespace Bloxstrap.UI.Elements.Settings.Pages
             try { foreach (var flag in parsed) App.FastFlags.SetValue(flag.Key, flag.Value); }
             finally { App.FastFlags.suspendUndoSnapshot = false; }
             ReloadList();
-            CountLabel.Text += $" Imported {parsed.Count}; resolved {import.Resolved} shortened names; omitted {import.Unresolved.Count}.";
+            CountLabel.Text += $" Imported {parsed.Count} with names preserved; {import.UnprefixedNames.Count} names without a recognized prefix; skipped {import.SkippedNulls} null values.";
         }
         private void Attempt(Action action)
         {
@@ -62,7 +54,7 @@ namespace Bloxstrap.UI.Elements.Settings.Pages
         {
             var picker = new OpenFileDialog { Filter = "JSON settings|*.json|Text files|*.txt", CheckFileExists = true };
             if (picker.ShowDialog(Window.GetWindow(this)) != true) return;
-            if (new FileInfo(picker.FileName).Length > 2_000_000) throw new InvalidDataException("Import is larger than 2 MB.");
+            if (new FileInfo(picker.FileName).Length > FastFlagImport.MaxJsonLength) throw new InvalidDataException("Import is larger than 16 MB.");
             ApplyJson(File.ReadAllText(picker.FileName));
         });
         private string Json() => JsonSerializer.Serialize(App.FastFlags.Prop, new JsonSerializerOptions { WriteIndented = true });
@@ -76,7 +68,7 @@ namespace Bloxstrap.UI.Elements.Settings.Pages
         private void Cell_EditEnding(object sender, DataGridCellEditEndingEventArgs e)
         {
             if (e.EditAction != DataGridEditAction.Commit || e.Row.Item is not FastFlag flag || e.EditingElement is not TextBox box) return;
-            if (box.Text.Length > 4096) { e.Cancel = true; Frontend.ShowMessageBox("Value is too long.", MessageBoxImage.Error); return; }
+            if (box.Text.Length > FastFlagImport.MaxValueLength) { e.Cancel = true; Frontend.ShowMessageBox("Value is too long.", MessageBoxImage.Error); return; }
             App.FastFlags.SetValue(flag.Name, box.Text);
         }
         private void Delete_Click(object sender, RoutedEventArgs e)

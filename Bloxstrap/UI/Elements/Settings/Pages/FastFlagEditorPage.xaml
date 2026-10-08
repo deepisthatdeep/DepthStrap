@@ -3,7 +3,7 @@
  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" Title="FastFlags" Scrollable="True" Loaded="Page_Loaded">
  <StackPanel Margin="0,0,14,14">
   <TextBlock Text="FastFlags" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,12" />
-  <TextBlock TextWrapping="Wrap" Text="View, search and edit ClientAppSettings.json. Roblox only applies locally allowlisted flags. Imports resolve recognized shortened names and report unresolved entries; explicit full-name values are preserved. Competitive may override its managed rendering flags while a game is running. Save changes before launching." Margin="0,0,0,14" />
+  <TextBlock TextWrapping="Wrap" Text="View, search and edit ClientAppSettings.json. Roblox only applies locally allowlisted flags. Imports preserve names, casing and scalar values exactly, including shortened names and place/datacenter filters. No online flag catalog is required. Competitive may override its managed rendering flags while a game is running. Save changes before launching." Margin="0,0,0,14" />
   <WrapPanel Margin="0,0,0,12">
    <ui:Button Content="Add / paste JSON" Click="Add_Click" Padding="12,6" Margin="0,0,8,8" />
    <ui:Button Content="Import file" Click="Import_Click" Padding="12,6" Margin="0,0,8,8" />

@@ -1,4 +1,4 @@
-# DepthStrap 1.0.12
+# DepthStrap 1.0.13
 
 A Windows Roblox launcher with a Crimson Contract theme, a custom stone and crimson icon, Competitive and Balanced profiles, and local server-route learning.
 
@@ -17,6 +17,8 @@ Version 1.0.3 repairs warning settings disabled by an older failed datacenter-re
 Version 1.0.4 preserves settings after unreadable or corrupt file loads, serializes cooperating settings readers and writers, and adds local Git privacy guards. Autolog accepts delayed region lookups only while their original join remains active. Custom app/Roblox fonts are validated as usable font faces, retained locally, and applied or reset only after settings save successfully.
 
 Version 1.0.5 makes Roblox XML saves and imports atomic and validates imports before replacement. Failed saves preserve the file and quality lock, stop save/launch success flows, and retain preset backups for retry. Recent match history reads only the required tail in the background, cancels on page exit, and reports loading, empty and unavailable states.
+
+Version 1.0.13 preserves imported FastFlag names and scalar values, including shortened keys, case-distinct keys and place/datacenter filters. It supersedes 1.0.12's alias conversion: short and full keys with the same suffix stay separate, so neither entry is lost or assigned a guessed prefix. Null entries are skipped as in the upstream editors. Pasted object members, comments and trailing commas are supported; malformed trailing content and exact duplicate keys remain errors. Imports allow up to 50,000 entries within a 16 MB document. Roblox decides which flags the installed build supports; Competitive continues to apply its managed rendering overrides while enabled.
 
 Version 1.0.12 imports mixed legacy FastFlag exports. Shortened names resolve only when a built-in preset or a full name in the same file identifies one exact prefix. Explicit full-name values take priority over conflicting shortened entries regardless of order. Unresolved names are listed for review before importing the rest; no prefixes are guessed and the original file is unchanged.
 

@@ -127,19 +127,49 @@ internal static class NetworkChecks
             "Initialization gives each route three longer passes, 24 probes, settling time and a 45-minute total budget");
         var parsed = FastFlagImport.Parse("{\"FFlagDebugSkyGray\":true,\"FIntDebugForceMSAASamples\":1}");
         check(parsed.Count == 2 && parsed["FIntDebugForceMSAASamples"] == "1", "FastFlags accepts scalar JSON values");
-        var legacy = FastFlagImport.ParseDetailed("{\"CSGLevelOfDetailSwitchingDistance\":0,\"DebugDisplayFPS\":false,\"FFlagDebugDisplayFPS\":true,\"UnknownShortName\":1}");
-        check(legacy.Flags["DFIntCSGLevelOfDetailSwitchingDistance"] == "0" && legacy.Flags["FFlagDebugDisplayFPS"] == "True" &&
-            legacy.Resolved == 2 && legacy.AliasConflicts == 1 && legacy.Unresolved.SequenceEqual(new[] { "UnknownShortName" }),
-            "Legacy aliases resolve from known presets or explicit imported names, preserve explicit values and report unknown names");
-        var reversed = FastFlagImport.ParseDetailed("{\"FFlagDebugDisplayFPS\":true,\"DebugDisplayFPS\":false}");
-        check(reversed.Flags["FFlagDebugDisplayFPS"] == "True" && reversed.AliasConflicts == 1,
-            "Explicit full-name import values win alias conflicts independently of JSON property order");
-        var ambiguous = FastFlagImport.ParseDetailed("{\"FFlagExample\":true,\"DFFlagExample\":false,\"Example\":true}");
-        check(ambiguous.Flags.Count == 2 && ambiguous.Unresolved.SequenceEqual(new[] { "Example" }),
-            "Ambiguous shortened FastFlag names are reported without guessing static or dynamic prefixes");
-        check(FastFlagImport.Parse("{\"FFlagUnknownFutureFlag\":true}").ContainsKey("FFlagUnknownFutureFlag"),
-            "Full names remain importable without a current online flag registry");
-        foreach (string input in new[] { "[]", "{\"FFlagFoo\":{}}", "{\"bad name\":1}", "{\"FFlagFoo\":1,\"FFlagFoo\":2}" })
+        var legacy = FastFlagImport.ParseDetailed("{\"CSGLevelOfDetailSwitchingDistance\":\"0\",\"DFIntCSGLevelOfDetailSwitchingDistance\":\"1\",\"DebugDisplayFPS\":false,\"FFlagDebugDisplayFPS\":true,\"UnknownShortName\":1}");
+        check(legacy.Flags.Count == 5 && legacy.Flags["CSGLevelOfDetailSwitchingDistance"] == "0" && legacy.Flags["DFIntCSGLevelOfDetailSwitchingDistance"] == "1" &&
+            legacy.Flags["DebugDisplayFPS"] == "False" && legacy.Flags["FFlagDebugDisplayFPS"] == "True" && legacy.Flags["UnknownShortName"] == "1",
+            "Froststrap exports retain every short and full key separately without alias guesses or conflicting-value loss");
+        var reversed = FastFlagImport.Parse("{\"FFlagDebugDisplayFPS\":true,\"DebugDisplayFPS\":false}");
+        check(reversed["FFlagDebugDisplayFPS"] == "True" && reversed["DebugDisplayFPS"] == "False",
+            "Short and full flag preservation is independent of JSON property order");
+        var ambiguous = FastFlagImport.Parse("{\"FFlagExample\":true,\"DFFlagExample\":false,\"Example\":true}");
+        check(ambiguous.Count == 3 && ambiguous["Example"] == "True",
+            "Shared suffixes do not rename or discard any imported key");
+        var fixture = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (string prefix in new[] { "FFlag", "DFFlag", "SFFlag", "FInt", "DFInt", "SFInt", "FString", "DFString", "SFString", "FLog", "DFLog", "SFLog" })
+        {
+            fixture[prefix + "Example"] = prefix.Contains("Flag") ? "False" : "123";
+            fixture[prefix + "Example_PlaceFilter"] = "true;123;456";
+            fixture[prefix + "Example_DataCenterFilter"] = "value;1;2";
+        }
+        fixture["DFIntCaseSensitive"] = "001";
+        fixture["DFIntCasesensitive"] = "002";
+        fixture["FStringLongValue"] = new string('a', 8192);
+        fixture["FFlagUnknownFutureFlag"] = "True";
+        for (int i = 0; i < 11_000; i++) fixture["FFlagBulk" + i] = "False";
+        var complete = FastFlagImport.Parse(JsonSerializer.Serialize(fixture));
+        check(complete.Count == fixture.Count && fixture.All(x => complete[x.Key] == x.Value),
+            "All flag families, filters, long strings, case-distinct keys and a registry over 10,000 entries import without a catalog");
+        App.FastFlags.Prop.Clear();
+        App.FastFlags.suspendUndoSnapshot = true;
+        try { foreach (var flag in complete) App.FastFlags.SetValue(flag.Key, flag.Value); }
+        finally { App.FastFlags.suspendUndoSnapshot = false; }
+        App.FastFlags.Save();
+        App.FastFlags.Prop.Clear();
+        App.FastFlags.Load();
+        var roundTrip = FastFlagImport.Parse(File.ReadAllText(App.FastFlags.FileLocation));
+        check(roundTrip.Count == fixture.Count && fixture.All(x => roundTrip[x.Key] == x.Value) && fixture.All(x => App.FastFlags.GetValue(x.Key) == x.Value),
+            "Compatible imported flags survive the production manager save, reload and export unchanged");
+        App.FastFlags.Prop.Clear(); App.FastFlags.Save();
+        var members = FastFlagImport.Parse("\uFEFF \"FFlagExample\":\"True\", // comment\n \"DFIntExample\":-1,");
+        check(members.Count == 2 && members["FFlagExample"] == "True" && members["DFIntExample"] == "-1",
+            "Pasted object members support a BOM, comments, omitted outer braces and a trailing comma");
+        var nulls = FastFlagImport.ParseDetailed("{\"FFlagIgnored\":null,\"FStringEmpty\":\"\",\"DFIntNegative\":-10}");
+        check(nulls.SkippedNulls == 1 && nulls.Flags.Count == 2 && nulls.Flags["FStringEmpty"] == "" && nulls.Flags["DFIntNegative"] == "-10",
+            "Upstream null entries are skipped while empty strings and negative values are preserved");
+        foreach (string input in new[] { "[]", "{\"FFlagFoo\":{}}", "{\"bad name\":1}", "{\"FFlagFoo\":1,\"FFlagFoo\":2}", "{\"FFlagFoo\":null,\"FFlagFoo\":1}", "{\"FFlagFoo\":1} trailing text" })
         {
             bool rejected = false;
             try { FastFlagImport.Parse(input); } catch { rejected = true; }
