@@ -8,6 +8,16 @@ internal static class InstallLifecycleChecks
 {
     internal static void Run(Action<bool, string> check)
     {
+        foreach (bool studio in new[] { false, true })
+        {
+            bool refused = false;
+            try { InstallPackagePipeline.EnsureClientClosed(studio, _ => true); }
+            catch (InvalidOperationException ex) { refused = ex.Message.Contains("left open"); }
+            check(refused, "Active target client blocks any install/repair without closing its session");
+            string? queried = null;
+            InstallPackagePipeline.EnsureClientClosed(studio, name => { queried = name; return false; });
+            check(queried == (studio ? "RobloxStudioBeta" : "RobloxPlayerBeta"), "Install guard checks only the product being modified and leaves the other product alone");
+        }
         var packages = Enumerable.Range(0, 4).Select(i => new Package { Name = $"fixture-{i}.zip",
             Signature = new string('a', 32), PackedSize = 1500000000, Size = 1800000000 }).ToArray();
         check(InstallPackagePipeline.PackedBytes(packages) == 6000000000L &&

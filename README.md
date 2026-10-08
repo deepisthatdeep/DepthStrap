@@ -1,4 +1,4 @@
-# DepthStrap 1.0.10
+# DepthStrap 1.0.11
 
 A Windows Roblox launcher with a Crimson Contract theme, a custom stone and crimson icon, Competitive and Balanced profiles, and local server-route learning.
 
@@ -10,13 +10,15 @@ Run `DepthStrap.exe` from the Windows release package. It installs under `%LOCAL
 
 WARP downloads directly from Cloudflare during setup rather than being redistributed inside the ZIP. WARP routes the computer's Internet traffic through Cloudflare; Cloudflare manages its service, registration and own logs. DepthStrap's network reset retains WARP's installation and registration.
 
-The standalone Windows x64 build includes .NET and requires no separate runtime installation. This build is unsigned and has no app auto-update feed configured.
+The standalone Windows x64 build includes .NET and requires no separate runtime installation. This build is unsigned. From version 1.0.11, automatic DepthStrap updates are enabled by default and can be disabled in DepthStrap Settings. The app checks the latest stable GitHub release when opened, verifies the DepthStrap.exe asset size and GitHub SHA-256 digest, installs it and resumes the original launch action. Updates defer while Roblox, Studio or another DepthStrap instance is running. Failed checks or downloads keep the installed version. Users of 1.0.10 or earlier need one manual upgrade to enable this feature. This updater only replaces DepthStrap; it never changes Roblox update, pause or pinned-build settings.
 
 Version 1.0.3 repairs warning settings disabled by an older failed datacenter-registry test. Live warnings and autolog operate independently of benchmark capabilities and start their required watcher even when other monitoring options are disabled. The watcher recognizes replacement joins and teleports without disconnect lines, accepts either server-confirmation order and retries temporarily locked log files. Location lookup retries transient failures and can use matching selected-server metadata or observed job history; missing universe logs fall back to Roblox's public place API. Warning and autolog decisions precede optional WARP/ping diagnostics. Unknown locations never cause an automatic leave, and stale results cannot warn about a server you have left. The recovery-loop safeguards from 1.0.2 remain in place.
 
 Version 1.0.4 preserves settings after unreadable or corrupt file loads, serializes cooperating settings readers and writers, and adds local Git privacy guards. Autolog accepts delayed region lookups only while their original join remains active. Custom app/Roblox fonts are validated as usable font faces, retained locally, and applied or reset only after settings save successfully.
 
 Version 1.0.5 makes Roblox XML saves and imports atomic and validates imports before replacement. Failed saves preserve the file and quality lock, stop save/launch success flows, and retain preset backups for retry. Recent match history reads only the required tail in the background, cancels on page exit, and reports loading, empty and unavailable states.
+
+Version 1.0.11 enables verified stable app updates from this repository, replaces executables atomically, validates the advertised app version, and preserves the existing installed app on replacement failure. Roblox installation and repair now stop while the target product is running rather than terminating Player sessions. App registration refreshes paths after relocation, and client registration uses the actual launch directory, including offline and background-update launches. Publish a higher numeric version tag (for example v1.0.12) as the latest stable GitHub Release with a DepthStrap.exe asset; source pushes alone do not update installed copies. Publish as a draft and finish uploading assets before making it public.
 
 Version 1.0.10 detects incomplete Player builds before launch, including missing, malformed or wrong-architecture RobloxPlayerBeta.dll dependencies. Damaged builds trigger repair even when updates are disabled, remain incomplete if downloaded core files fail validation, and are excluded from installed build choices. Older monolithic builds remain supported. Player and Studio launches select their own executable explicitly.
 

@@ -34,8 +34,12 @@ namespace Bloxstrap
         public const string DisplayName = "DepthStrap";
 #endif
         public const string ProjectOwner = "DepthStrap";
-        // No fork release feed is configured. Never replace this build with upstream releases.
+        // App updates use only stable releases from the DepthStrap repository.
+#if DEBUG || QA_BUILD
         public static bool SupportsAppUpdates => false;
+#else
+        public static bool SupportsAppUpdates => true;
+#endif
         public const string ProjectRepository = "deepisthatdeep/DepthStrap";
         public const string ProjectDownloadLink = "https://github.com/deepisthatdeep/DepthStrap/releases";
         public const string ProjectHelpLink = "https://en.help.roblox.com/";
@@ -215,40 +219,6 @@ namespace Bloxstrap
             }
         }
 
-        public static async Task<GithubRelease?> GetLatestRelease(bool includePreRelease = false)
-        {
-            if (!SupportsAppUpdates) return null;
-            const string LOG_IDENT = "App::GetLatestRelease";
-
-            try
-            {
-                string url = includePreRelease ? $"https://api.github.com/repos/{ProjectRepository}/releases" : $"https://api.github.com/repos/{ProjectRepository}/releases/latest";
-
-                if (includePreRelease)
-                {
-                    var releases = await Http.GetJson<List<GithubRelease>>(url);
-
-                    if (releases is null || releases.Count == 0)
-                    {
-                        Logger.WriteLine(LOG_IDENT, "No releases found in the repository.");
-                        return null;
-                    }
-
-                    return releases[0];
-                }
-                else
-                {
-                    return await Http.GetJson<GithubRelease>(url);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.WriteException(LOG_IDENT, ex);
-            }
-
-            return null;
-        }
-
         public static void AssertWindowsOSVersion()
         {
             const string LOG_IDENT = "App::AssertWindowsOSVersion";
@@ -265,7 +235,7 @@ namespace Bloxstrap
             }
         }
 
-        protected override void OnStartup(StartupEventArgs e)
+        protected override async void OnStartup(StartupEventArgs e)
         {
             const string LOG_IDENT = "App::OnStartup";
 
@@ -401,7 +371,7 @@ namespace Bloxstrap
                     Terminate();
                 }
 
-                Task.Run(RemoteData.LoadData); // ok
+                _ = Task.Run(RemoteData.LoadData); // ok
 
                 Settings.Load();
                 if (Competitive.RegionMonitoringPolicy.RepairLegacySetup(Settings.Prop, Networking.NetworkTestResult.Read()))
@@ -436,13 +406,26 @@ namespace Bloxstrap
                 Locale.Set(Settings.Prop.Locale);
 
                 if (!LaunchSettings.BypassUpdateCheck)
+                {
                     Installer.HandleUpgrade();
+                    if (LaunchSettings.UpgradeFlag.Active && !AppUpdater.IsInstalledVersion(Paths.Application, Version))
+                    {
+                        Frontend.ShowMessageBox("DepthStrap could not finish the app update. Close other DepthStrap windows and try again. Your previous installed version was preserved.", MessageBoxImage.Warning);
+                        Terminate();
+                        return;
+                    }
+                }
 
                 WindowsRegistry.RegisterApis();
 
                 if (Settings.Prop.NetworkSetupVersion < 1 && !LaunchSettings.QuietFlag.Active && !LaunchSettings.UninstallFlag.Active && !LaunchSettings.WatcherFlag.Active && !LaunchSettings.MultiInstanceWatcherFlag.Active && !LaunchSettings.BackgroundUpdaterFlag.Active)
                     new UI.Elements.Dialogs.RegionCalibrationDialog().ShowDialog();
 
+                if (await AppUpdater.TryUpdateAsync())
+                {
+                    Terminate();
+                    return;
+                }
                 LaunchHandler.ProcessLaunchArgs();
             }
 

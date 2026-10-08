@@ -1,7 +1,10 @@
-﻿namespace Bloxstrap.Models.APIs.GitHub
+namespace Bloxstrap.Models.APIs.GitHub
 {
     public class GithubRelease
     {
+        [JsonPropertyName("draft")]
+        public bool Draft { get; set; }
+
         [JsonPropertyName("tag_name")]
         public string TagName { get; set; } = null!;
 

@@ -23,11 +23,11 @@
         <TextBlock Text="DepthStrap" FontSize="20" FontWeight="Bold" Margin="0,16,0,0" />
 
         <StackPanel DataContext="{Binding Channel}">
-            <controls:OptionControl Header="DepthStrap updates" Description="Manual builds only until a DepthStrap release feed is configured. Roblox updates remain available." />
+            <controls:OptionControl Header="Automatic DepthStrap updates" Description="Install verified stable GitHub releases when DepthStrap opens. Updates wait until Roblox and Studio are closed. Your settings are kept. Only DepthStrap updates; Roblox update settings stay unchanged.">
+                <ui:ToggleSwitch IsChecked="{Binding AutomaticDepthStrapUpdates, Mode=TwoWay}" />
+            </controls:OptionControl>
 
-            <controls:OptionControl 
-                Header="Save And Launch Action"
-                Description="Adds an option so whenever clicking save and launch, it will ask if to studio or player.">
+            <controls:OptionControl Header="Save And Launch Action" Description="Adds an option so whenever clicking save and launch, it will ask if to studio or player.">
                 <ui:ToggleSwitch IsChecked="{Binding SaveAndLaunchToPlayer, Mode=TwoWay}" />
             </controls:OptionControl>
 

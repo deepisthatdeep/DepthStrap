@@ -5,6 +5,18 @@ namespace Bloxstrap.Utility
 {
     internal static class InstallPackagePipeline
     {
+        internal static bool HasProcess(string name)
+        {
+            var processes = Process.GetProcessesByName(name);
+            try { return processes.Length > 0; }
+            finally { foreach (var process in processes) process.Dispose(); }
+        }
+
+        internal static void EnsureClientClosed(bool studio, Func<string, bool> hasProcess)
+        {
+            if (hasProcess(studio ? "RobloxStudioBeta" : "RobloxPlayerBeta"))
+                throw new InvalidOperationException($"Close {(studio ? "Roblox Studio" : "all Roblox clients")} before installing or repairing this build. Existing sessions have been left open.");
+        }
         internal static long PackedBytes(IEnumerable<Package> packages) => packages.Sum(x => (long)x.PackedSize);
         internal static long RequiredBytes(IEnumerable<Package> packages) => packages.Sum(x => checked((long)x.Size + x.PackedSize));
         internal static long RequiredFreeBytes(IEnumerable<Package> packages, Func<Package, long> cachedSize)

@@ -1,17 +1,4 @@
 using Bloxstrap.Competitive;
-// To debug the automatic updater:
-// - Uncomment the definition below
-// - Publish the executable
-// - Launch the executable (click no when it asks you to upgrade)
-// - Launch Roblox (for testing web launches, run it from the command prompt)
-// - To re-test the same executable, delete it from the installation folder
-
-// #define DEBUG_UPDATER
-
-#if DEBUG_UPDATER
-#warning "Automatic updater debugging is enabled"
-#endif
-
 using Bloxstrap.AppData;
 using Bloxstrap.Integrations;
 using Bloxstrap.Models;
@@ -210,15 +197,7 @@ namespace Bloxstrap
             if (connectionResult is not null)
                 HandleConnectionError(connectionResult);
 
-#if (!DEBUG || DEBUG_UPDATER) && !QA_BUILD
-            if (App.Settings.Prop.UpdateChecks != UpdateCheck.Disabled && !App.LaunchSettings.UpgradeFlag.Active)
-            {
-                bool updatePresent = await CheckForUpdates();
-                
-                if (updatePresent)
-                    return;
-            }
-#endif
+
 
             // ensure only one instance of the bootstrapper is running at the time
             // so that we don't have stuff like two updates happening simultaneously
@@ -322,7 +301,7 @@ namespace Bloxstrap
             else
                 WindowsRegistry.RegisterPlayer();
 
-            WindowsRegistry.RegisterClientLocation(IsStudioLaunch, _latestVersionDirectory); // if it for some reason doesnt exist
+            WindowsRegistry.RegisterClientLocation(IsStudioLaunch, AppData.Directory); // Register the build this launch will actually use.
 
             if (_launchMode != LaunchMode.Player)
                 await mutex.ReleaseAsync();
@@ -965,6 +944,7 @@ namespace Bloxstrap
                 }
                 try
                 {
+                    InstallPackagePipeline.EnsureClientClosed(IsStudioLaunch, InstallPackagePipeline.HasProcess);
                     InstallPackagePipeline.BeginRecovery(AppData.DistributionStateManager);
                     // clean up registry keys
                     WindowsRegistry.RegisterClientLocation(IsStudioLaunch, null);
@@ -996,163 +976,6 @@ namespace Bloxstrap
         #endregion
 
         #region App Install
-        private async Task<bool> CheckForUpdates()
-        {
-            const string LOG_IDENT = "Bootstrapper::CheckForUpdates";
-
-            if (!App.SupportsAppUpdates || App.Settings.Prop.UpdateChecks == UpdateCheck.Disabled)
-            {
-                App.Logger.WriteLine(LOG_IDENT, "Update checking is disabled in settings.");
-                return false;
-            }
-
-            if (Process.GetProcessesByName(App.ProjectName).Length > 1)
-            {
-                App.Logger.WriteLine(LOG_IDENT, $"More than one {App.ProjectName} instance running, aborting update check.");
-                return false;
-            }
-
-            SetStatus("Checking for Updates...");
-
-            GithubRelease? releaseInfo = null;
-            string version;
-
-#if !DEBUG_UPDATER
-            UpdateCheck preference = App.Settings.Prop.UpdateChecks;
-
-            bool includePreRelease = (preference == UpdateCheck.Both || preference == UpdateCheck.Test);
-
-            releaseInfo = await App.GetLatestRelease(includePreRelease);
-
-            if (releaseInfo is null)
-                return false;
-
-            string currentVer = App.Version;
-            string releaseVer = releaseInfo.TagName;
-            version = releaseVer;
-
-            var versionComparison = Utilities.CompareVersions(currentVer, releaseVer);
-
-            if (versionComparison == VersionComparison.LessThan)
-            {
-                string releaseType = releaseInfo.Prerelease ? "Pre-release" : "Stable";
-                App.Logger.WriteLine(LOG_IDENT, $"{releaseType} update available: {currentVer} -> {releaseVer}");
-
-                var result = Frontend.ShowMessageBox(
-                    $"A new {releaseType.ToLower()} version {releaseVer} is available. Would you like to update now?",
-                    MessageBoxImage.Question,
-                    MessageBoxButton.YesNo
-                );
-
-                if (result != MessageBoxResult.Yes)
-                {
-                    App.Logger.WriteLine(LOG_IDENT, "User declined the update.");
-                    return false;
-                }
-            }
-            else
-            {
-                App.Logger.WriteLine(LOG_IDENT, $"No update required. Current: {currentVer}, Latest: {releaseVer}");
-                return false;
-            }
-#else
-    version = App.Version;
-#endif
-
-            SetStatus(Strings.Bootstrapper_Status_UpgradingBloxstrap);
-
-            try
-            {
-#if DEBUG_UPDATER
-        string downloadLocation = Path.Combine(Paths.TempUpdates, "Bloxstrap.exe");
-        Directory.CreateDirectory(Paths.TempUpdates);
-        File.Copy(Paths.Process, downloadLocation, overwrite: true);
-#else
-                if (releaseInfo!.Assets is null || releaseInfo.Assets.Count == 0)
-                {
-                    App.Logger.WriteLine(LOG_IDENT, "Release found but no assets were available for download.");
-                    return false;
-                }
-
-                var asset = releaseInfo.Assets.FirstOrDefault(x => x.Name.Equals("Froststrap-windows-x64.exe", StringComparison.OrdinalIgnoreCase))
-                            ?? releaseInfo.Assets.FirstOrDefault(x => x.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
-
-                if (asset is null)
-                {
-                    App.Logger.WriteLine(LOG_IDENT, "Release found but no .exe asset was available for download.");
-                    return false;
-                }
-
-                string downloadLocation = Path.Combine(Paths.TempUpdates, asset.Name);
-                Directory.CreateDirectory(Paths.TempUpdates);
-
-                App.Logger.WriteLine(LOG_IDENT, $"Downloading {version}...");
-
-                if (!File.Exists(downloadLocation))
-                {
-                    using var response = await App.HttpClient.GetAsync(asset.BrowserDownloadUrl);
-                    response.EnsureSuccessStatusCode();
-
-                    await using var fileStream = new FileStream(downloadLocation, FileMode.Create, FileAccess.Write, FileShare.None);
-                    await response.Content.CopyToAsync(fileStream);
-                }
-#endif
-
-                App.Logger.WriteLine(LOG_IDENT, $"Starting updater {version}...");
-
-                var startInfo = new ProcessStartInfo(downloadLocation)
-                {
-                    UseShellExecute = true,
-                };
-
-                startInfo.ArgumentList.Add("/S");
-
-                startInfo.ArgumentList.Add("-upgrade");
-
-                foreach (var arg in App.LaunchSettings.Args)
-                    startInfo.ArgumentList.Add(arg);
-
-                if (_launchMode == LaunchMode.Player && !startInfo.ArgumentList.Contains("-player"))
-                    startInfo.ArgumentList.Add("-player");
-                else if (_launchMode == LaunchMode.Studio && !startInfo.ArgumentList.Contains("-studio"))
-                    startInfo.ArgumentList.Add("-studio");
-
-                App.Settings.Save();
-
-                using var updateLock = new InterProcessLock("AutoUpdater");
-
-                var process = Process.Start(startInfo);
-                if (process == null)
-                {
-                    var result = Frontend.ShowMessageBox(
-                        string.Format(Strings.Bootstrapper_AutoUpdateFailed, version),
-                        MessageBoxImage.Information,
-                        MessageBoxButton.YesNo);
-
-                    if (result == MessageBoxResult.Yes)
-                        Utilities.ShellExecute(App.ProjectDownloadLink);
-
-                    return false;
-                }
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                App.Logger.WriteLine(LOG_IDENT, "An exception occurred when running the auto-updater");
-                App.Logger.WriteException(LOG_IDENT, ex);
-
-                var result = Frontend.ShowMessageBox(
-                    string.Format(Strings.Bootstrapper_AutoUpdateFailed, version),
-                    MessageBoxImage.Information,
-                    MessageBoxButton.YesNo);
-
-                if (result == MessageBoxResult.Yes)
-                    Utilities.ShellExecute(App.ProjectDownloadLink);
-            }
-
-            return false;
-        }
         #endregion
 
         #region Roblox Install
@@ -1257,51 +1080,6 @@ namespace Bloxstrap
             }
         }
 
-        private void KillRobloxPlayers()
-        {
-            const string LOG_IDENT = "Bootstrapper::KillRobloxPlayers";
-
-            var processesToKill = new List<Process>();
-            processesToKill.AddRange(Process.GetProcessesByName("RobloxPlayerBeta"));
-            processesToKill.AddRange(Process.GetProcessesByName("RobloxCrashHandler"));
-
-            foreach (Process process in processesToKill)
-            {
-                try
-                {
-                    App.Logger.WriteLine(LOG_IDENT, $"Terminating process {process.ProcessName} ({process.Id})");
-                    process.Kill();
-                }
-                catch (Exception ex)
-                {
-                    App.Logger.WriteLine(LOG_IDENT, $"Failed to close process {process.Id}");
-                    App.Logger.WriteException(LOG_IDENT, ex);
-                }
-            }
-
-            var studioProcesses = Process.GetProcessesByName("RobloxStudioBeta");
-
-            if (studioProcesses.Any())
-            {
-                App.Logger.WriteLine(LOG_IDENT, "Waiting for Roblox Studio processes to exit...");
-
-                SetStatus("Waitting for Roblox Studio...");
-
-                while (Process.GetProcessesByName("RobloxStudioBeta").Any())
-                {
-                    Thread.Sleep(1000);
-
-                    if (_cancelTokenSource.IsCancellationRequested)
-                    {
-                        App.Logger.WriteLine(LOG_IDENT, "Studio wait cancelled by user.");
-                        return;
-                    }
-                }
-
-                App.Logger.WriteLine(LOG_IDENT, "All Roblox Studio processes closed.");
-            }
-        }
-
         private async Task UpgradeRoblox()
         {
             var installation = UpgradeRobloxCore();
@@ -1318,8 +1096,6 @@ namespace Bloxstrap
 
             bool explicitVersion = App.LaunchSettings.VersionFlag.Active ||
                 (_launchMode == LaunchMode.Player && !string.IsNullOrWhiteSpace(App.Settings.Prop.RobloxPlayerVersionOverride));
-            if (explicitVersion && _launchMode == LaunchMode.Player && Roblox.CompetitiveSettingsBackup.PlayerPresence())
-                throw new InvalidOperationException("Close all Roblox clients before installing a pinned version. Existing clients have been left open.");
             bool CancelUpgrade = !App.Settings.Prop.UpdateRoblox && !explicitVersion && !App.LaunchSettings.ForceFlag.Active && !_mustUpgrade;
 
             if (CancelUpgrade)
@@ -1355,12 +1131,10 @@ namespace Bloxstrap
                 throw new IOException("There is not enough free space to install this Roblox build. The existing build was preserved.");
             }
 
+            InstallPackagePipeline.EnsureClientClosed(IsStudioLaunch, InstallPackagePipeline.HasProcess);
             InstallPackagePipeline.BeginRecovery(AppData.DistributionStateManager);
             _isInstalling = true;
 
-            // make sure nothing is running before continuing upgrade
-            if (!App.LaunchSettings.BackgroundUpdaterFlag.Active)
-                KillRobloxPlayers();
 
             // get a fully clean install
             if (!App.LaunchSettings.BackgroundUpdaterFlag.Active && Directory.Exists(_latestVersionDirectory))

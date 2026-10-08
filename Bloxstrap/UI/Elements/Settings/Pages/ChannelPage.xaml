@@ -18,17 +18,9 @@
         <TextBlock Margin="0,0,0,8" Text="{x:Static resources:Strings.Menu_Channel_Description}" FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
 
         <TextBlock Text="DepthStrap" FontSize="20" FontWeight="Bold" Margin="0,16,0,0" />
-        <controls:OptionControl Header="{x:Static resources:Strings.Menu_Behaviour_AutoUpdate_Title}" Description="Choose how DepthStrap handles automatic updates.">
-            <ComboBox ItemsSource="{Binding UpdateCheckValues}" 
-              SelectedItem="{Binding SelectedUpdateCheck, Mode=TwoWay}" 
-              Width="200">
-                <ComboBox.ItemTemplate>
-                    <DataTemplate>
-                        <TextBlock Text="{Binding Converter={StaticResource EnumNameConverter}}" />
-                    </DataTemplate>
-                </ComboBox.ItemTemplate>
-            </ComboBox>
-        </controls:OptionControl>
+        <controls:OptionControl Header="Automatic DepthStrap updates" Description="Install verified stable GitHub releases when DepthStrap opens. Updates wait until Roblox and Studio are closed. Your settings are kept. Only DepthStrap updates; Roblox update settings stay unchanged.">
+                <ui:ToggleSwitch IsChecked="{Binding AutomaticDepthStrapUpdates, Mode=TwoWay}" />
+            </controls:OptionControl>
 
         <controls:OptionControl 
             Header="Save And Launch Action"

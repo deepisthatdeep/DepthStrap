@@ -61,7 +61,7 @@ namespace Bloxstrap
 
                 try
                 {
-                    File.Copy(Paths.Process, Paths.Application, true);
+                    AppUpdater.ReplaceExecutable(Paths.Process, Paths.Application);
                 }
                 catch (Exception ex)
                 {
@@ -491,7 +491,7 @@ namespace Bloxstrap
             {
                 try
                 {
-                    File.Copy(Paths.Process, Paths.Application, true);
+                    AppUpdater.ReplaceExecutable(Paths.Process, Paths.Application);
                     break;
                 }
                 catch (Exception ex)

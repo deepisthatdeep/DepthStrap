@@ -1,4 +1,4 @@
-﻿using Bloxstrap.RobloxInterfaces;
+using Bloxstrap.RobloxInterfaces;
 using System.ComponentModel;
 using System.Windows;
 using System.Net;
@@ -12,18 +12,11 @@ namespace Bloxstrap.UI.ViewModels.Settings
             Task.Run(() => LoadChannelDeployInfo(App.Settings.Prop.Channel));
         }
 
-        public IEnumerable<UpdateCheck> UpdateCheckValues => Enum.GetValues(typeof(UpdateCheck)).Cast<UpdateCheck>();
-
-        public UpdateCheck SelectedUpdateCheck
+        public bool AutomaticDepthStrapUpdates
         {
-            get => App.Settings.Prop.UpdateChecks;
-            set
-            {
-                App.Settings.Prop.UpdateChecks = value;
-                OnPropertyChanged(nameof(SelectedUpdateCheck));
-            }
+            get => App.Settings.Prop.AutomaticDepthStrapUpdates;
+            set { App.Settings.Prop.AutomaticDepthStrapUpdates = value; OnPropertyChanged(nameof(AutomaticDepthStrapUpdates)); }
         }
-
         public bool IsRobloxInstallationMissing => !App.IsPlayerInstalled && !App.IsStudioInstalled;
 
         private async Task LoadChannelDeployInfo(string channel)
