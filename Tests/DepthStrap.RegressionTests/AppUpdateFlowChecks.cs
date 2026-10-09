@@ -27,7 +27,8 @@ internal static class AppUpdateFlowChecks
         internal readonly byte[] Binary = File.ReadAllBytes(typeof(App).Assembly.Location);
         internal readonly HttpClient Client;
         internal AppUpdateRuntime Runtime;
-        internal string Tag = "v" + App.Version;
+        internal string Tag = "v" + new Version(Version.Parse(App.Version).Major, Version.Parse(App.Version).Minor,
+            Math.Max(0, Version.Parse(App.Version).Build));
         internal int Queries, Downloads, Saves, Acquisitions, Starts, Releases;
         internal bool Running, SaveSucceeds = true, LockAvailable = true, StartSucceeds = true;
         internal HttpStatusCode ApiStatus = HttpStatusCode.OK;
