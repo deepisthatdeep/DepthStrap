@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -23,8 +23,8 @@ namespace Bloxstrap.UI.Elements.Base
             var theme = App.Settings.Prop.Theme.GetFinal();
             _themeService.SetTheme(theme == Enums.Theme.Light ? ThemeType.Light : ThemeType.Dark);
             BrandTheme.Apply(Application.Current.Resources, theme);
-            Background = (Brush)Application.Current.Resources["ApplicationBackgroundBrush"];
-            Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+            SetResourceReference(BackgroundProperty, "ApplicationBackground");
+            SetResourceReference(ForegroundProperty, "TextFillColorPrimaryBrush");
             Icon = new BitmapImage(new Uri(BrandTheme.IconUri));
             Title = App.DisplayName;
         }
@@ -39,16 +39,7 @@ namespace Bloxstrap.UI.Elements.Base
                     hwndSource.CompositionTarget.RenderMode = RenderMode.SoftwareOnly;
             }
 
-            // Custom Font
-            string? fontPath = App.Settings.Prop.CustomFontPath;
-            if (!string.IsNullOrWhiteSpace(fontPath) && File.Exists(fontPath))
-            {
-                var font = FontManager.LoadFontFromFile(fontPath);
-                if (font != null)
-                {
-                    this.FontFamily = font;
-                }
-            }
+            FontManager.ApplySavedFont(this);
         }
     }
 }

@@ -20,6 +20,7 @@ using Bloxstrap.UI;
 using Bloxstrap.UI.Elements.Settings;
 using Bloxstrap.UI.Elements.Settings.Pages;
 using Bloxstrap.UI.Elements.Bootstrapper;
+using Bloxstrap.Utility;
 
 internal static class Program
 {
@@ -38,6 +39,56 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Length == 2 && args[0] == "--live-version-audit")
+        {
+            LiveVersionChecks.RunAsync(args[1]).GetAwaiter().GetResult(); return;
+        }
+        if (args.Length == 2 && args[0] == "--release-options")
+        {
+            var catalog = RobloxReleaseLookup.GetReleaseCatalogAsync().GetAwaiter().GetResult();
+            var matches = RobloxReleaseLookup.MatchReleases(catalog, args[1]);
+            Console.WriteLine($"Player release options for {args[1]}: {string.Join(", ", matches)}");
+            if (matches.Length == 0) Environment.ExitCode = 1;
+            return;
+        }
+        if (args.Length == 3 && args[0] == "--resolve-release")
+        {
+            Paths.Initialize(Path.Combine(Path.GetFullPath(args[2]), "lookup-fixture-" + Guid.NewGuid().ToString("N")));
+            typeof(Paths).GetProperty("Roblox")!.SetValue(null, Path.Combine(Paths.Base, "Roblox"));
+            try { Console.WriteLine(args[1] + " => " + RobloxReleaseLookup.ResolveAsync(args[1], CancellationToken.None).GetAwaiter().GetResult()); }
+            catch (Exception ex) { Console.Error.WriteLine(ex.Message); Environment.ExitCode = 1; }
+            return;
+        }
+        if (args.Length == 2 && args[0] == "--session-file-checks")
+        {
+            Paths.Initialize(Path.GetFullPath(args[1]));
+            SessionStateFileChecks.Run(Check);
+            Console.WriteLine($"PASS: {_checks} session-file checks"); return;
+        }
+        if (args.Length == 2 && args[0] == "--logger-checks")
+        {
+            Paths.Initialize(Path.Combine(Path.GetFullPath(args[1]), "logger-fault-" + Guid.NewGuid().ToString("N")));
+            Directory.CreateDirectory(Paths.Base);
+            LoggerChecks.Run(Check);
+            Console.WriteLine($"PASS: {_checks} logger storage-failure checks"); return;
+        }
+        if (args.Length == 4 && args[0] == "--update-handoff-worker")
+        {
+            if (args[3] == "exit") return;
+            if (args[3] == "stall") { Thread.Sleep(10000); return; }
+            var forwarded = JsonSerializer.Deserialize<string[]>(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(args[2])))!;
+            var launch = new LaunchSettings(forwarded);
+            bool accepted = AppUpdateHandoff.Accept(launch.UpdateHandoffFlag.Data, TimeSpan.FromMilliseconds(args[3] == "orphan" ? 200 : 2000));
+            File.WriteAllText(args[1], JsonSerializer.Serialize(new { Accepted = accepted, Args = launch.RobloxLaunchArgs }));
+            return;
+        }
+        if (args.Length == 3 && args[0] == "--update-launch-worker")
+        {
+            var forwarded = JsonSerializer.Deserialize<string[]>(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(args[2])))!;
+            var launch = new LaunchSettings(forwarded);
+            File.WriteAllText(args[1], JsonSerializer.Serialize(new { Upgrade = launch.UpgradeFlag.Active, Args = launch.RobloxLaunchArgs }));
+            return;
+        }
         if (args.Length == 3 && args[0] == "--convert-fastflags")
         {
             var import = FastFlagImport.ParseDetailed(File.ReadAllText(args[1]));
@@ -59,7 +110,10 @@ internal static class Program
             Paths.Initialize(args[1]);
             long target = long.Parse(args[2]);
             while (DateTime.UtcNow.Ticks < target) Thread.Sleep(5);
+            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());
             App.Logger.Initialize();
+            Parallel.For(0, 64, i => App.Logger.WriteLine("LoggerExitFixture", $"entry-{i:D2}: {new string('x', 512)}"));
+            App.Logger.WriteLine("LoggerExitFixture", "terminal-entry-before-immediate-exit");
             Environment.Exit(App.Logger.Initialized ? 0 : 2);
             return;
         }
@@ -109,10 +163,31 @@ internal static class Program
         
         app.DispatcherUnhandledException += (_, e) => { Console.Error.WriteLine(e.Exception); Environment.Exit(1); };
         Console.WriteLine("Resources loaded");
+        if (args.Contains("--autocomplete-only"))
+        {
+            BrandTheme.Apply(app.Resources, Theme.CrimsonContract);
+            CheckReleaseDropdown(new AdvancedRobloxSettingsPage());
+            Console.WriteLine($"PASS: {_checks} actual autocomplete dropdown checks.");
+            return;
+        }
+        if (args.Contains("--update-only"))
+        {
+            AppUpdateChecks.Run(Check); AppUpdateFlowChecks.Run(Check); AppUpdateHandoffChecks.Run(Check);
+            Console.WriteLine($"PASS: {_checks} updater checks"); return;
+        }
         if (args.Contains("--audit-only")) { ReliabilityAuditChecks.Run(Check); Console.WriteLine($"PASS: {_checks} audit checks"); return; }
+        if (args.Contains("--public-network-only")) { ServerBrowserChecks.VerifyPublicNetwork(Check); Console.WriteLine($"PASS: {_checks} public network checks"); return; }
         var bindingErrors = new BindingErrors();
         PresentationTraceSources.DataBindingSource.Switch.Level = SourceLevels.Error;
         PresentationTraceSources.DataBindingSource.Listeners.Add(bindingErrors);
+        if (args.Contains("--popup-only"))
+        {
+            VerifyThemes(app);
+            PopupChecks.Run(Check, Path.GetDirectoryName(output)!, SaveVisual);
+            Check(bindingErrors.Messages.Count == 0, "Popup binding errors: " + string.Join("\n", bindingErrors.Messages.Take(12)));
+            Console.WriteLine($"PASS: {_checks} popup checks");
+            return;
+        }
         VerifyCore();
         NetworkChecks.Run(Check, args.Contains("--verify-warp-package") ? args[Array.IndexOf(args, "--verify-warp-package") + 1] : null);
         FeatureChecks.Run(Check);
@@ -121,14 +196,21 @@ internal static class Program
         ClientFilesChecks.Run(Check);
         VersionChecks.Run(Check);
         AppUpdateChecks.Run(Check);
+        AppUpdateFlowChecks.Run(Check);
+        AppUpdateHandoffChecks.Run(Check);
         InstallerChecks.Run(Check);
         InstallLifecycleChecks.Run(Check);
         ServerBrowserChecks.Run(Check);
+        GameSearchChecks.Run(Check);
         if (args.Contains("--verify-public-network")) ServerBrowserChecks.VerifyPublicNetwork(Check);
+        ActivityQueryChecks.Run(Check);
+        LoggerChecks.Run(Check);
         WatcherChecks.Run(Check);
+        SessionStateFileChecks.Run(Check);
         ReliabilityAuditChecks.Run(Check);
         HistoryChecks.Run(Check);
         VerifyThemes(app);
+        PopupChecks.Run(Check, Path.GetDirectoryName(output)!, SaveVisual);
         if (args.Contains("--calibrate"))
         {
             Console.WriteLine("Running isolated installation calibration");
@@ -180,7 +262,7 @@ internal static class Program
             Check(themedRoot.GetValue(System.Windows.Controls.Panel.BackgroundProperty) is SolidColorBrush, "New window uses solid background: " + theme);
             SaveVisual(themedRoot, Path.Combine(Path.GetDirectoryName(output)!, "DepthStrap-" + theme + ".png"), 1280, 760);
         }
-        foreach (var page in new FrameworkElement[] { new RegionSelectorPage(), new AdvancedRobloxSettingsPage(), new DepthStrapSettingsPage(), new AppearancePage(), new FastFlagEditorPage() })
+        foreach (var page in new FrameworkElement[] { new RegionSelectorPage(), new AdvancedRobloxSettingsPage(), new DepthStrapSettingsPage(), new AntiApiPage(), new AppearancePage(), new FastFlagEditorPage() })
         {
             Console.WriteLine("Layout: " + page.GetType().Name);
             page.Measure(new Size(990, 680)); page.Arrange(new Rect(0, 0, 990, 680)); page.UpdateLayout();
@@ -189,6 +271,7 @@ internal static class Program
         App.Settings.Prop.Theme = Theme.CrimsonContract;
         BrandTheme.Apply(app.Resources, Theme.CrimsonContract);
         var launchSettingsPage = new AdvancedRobloxSettingsPage();
+        CheckReleaseDropdown(launchSettingsPage);
         launchSettingsPage.SetValue(System.Windows.Documents.TextElement.ForegroundProperty, app.Resources["TextFillColorPrimaryBrush"]);
         SaveVisual(new System.Windows.Controls.Border { Background = (Brush)app.Resources["ApplicationBackground"], Padding = new Thickness(20),
             Child = new System.Windows.Controls.Frame { NavigationUIVisibility = System.Windows.Navigation.NavigationUIVisibility.Hidden, Content = launchSettingsPage } },
@@ -235,8 +318,61 @@ internal static class Program
         rejoin.Content = null;
         SaveVisual(new System.Windows.Controls.Border { Background = rejoin.Background, Child = rejoinRoot }, Path.Combine(Path.GetDirectoryName(output)!, "DepthStrap-Rejoin.png"), 390, 210);
         Check(bindingErrors.Messages.Count == 0, "Active page binding errors: " + string.Join("\n", bindingErrors.Messages.Take(12)));
-        Console.WriteLine($"PASS: {_checks} checks, six settings pages, three themes, network setup, menu, alert and rejoin previews.");
+        Console.WriteLine($"PASS: {_checks} checks, seven settings pages, all theme popup previews, network setup, menu, alert and rejoin previews.");
         Environment.Exit(0);
+    }
+
+    private static void CheckReleaseDropdown(AdvancedRobloxSettingsPage launchSettingsPage)
+    {
+        var versionPanel = (FrameworkElement)launchSettingsPage.FindName("VersionSettingsPanel");
+        ((Bloxstrap.UI.ViewModels.Settings.RobloxVersionArchiveViewModel)versionPanel.DataContext).ReleaseLabels =
+            () => Task.FromResult<(string?, string?)>(("0.742.0.7421053", "0.741.0.7411058"));
+        var fixtureWindow = new Window { Width = 1000, Height = 750, ShowActivated = false,
+            Content = new System.Windows.Controls.Frame { NavigationUIVisibility = System.Windows.Navigation.NavigationUIVisibility.Hidden, Content = launchSettingsPage } };
+        fixtureWindow.Show();
+        try
+        {
+        launchSettingsPage.Measure(new Size(990, 680)); launchSettingsPage.Arrange(new Rect(0, 0, 990, 680));
+        launchSettingsPage.UpdateLayout();
+        static IEnumerable<DependencyObject> Children(DependencyObject parent)
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                yield return child;
+                foreach (var nested in Children(child)) yield return nested;
+            }
+        }
+        var releaseInput = Children(launchSettingsPage).OfType<System.Windows.Controls.TextBox>()
+            .Single(input => Equals(input.Tag, "ReleaseNumberInput"));
+        var releasePopup = Children(launchSettingsPage).OfType<System.Windows.Controls.Primitives.Popup>()
+            .Single(popup => Equals(popup.Tag, "ReleaseNumberPopup"));
+        var releaseOptions = (System.Windows.Controls.ListBox)((System.Windows.Controls.Border)releasePopup.Child).Child;
+        var releaseVm = (Bloxstrap.UI.ViewModels.Settings.RobloxVersionArchiveViewModel)releaseInput.DataContext;
+        releaseVm.ReleaseCatalog = () => Task.FromResult(new[] { "0.741.0.7411058", "0.741.0.7411059", "0.742.0.7420001" });
+        int suggestionInstalls = 0;
+        releaseVm.RunInstaller = () => { suggestionInstalls++; return Task.FromResult(0); };
+        releaseInput.Text = "741";
+        releaseInput.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty)!.UpdateSource();
+        HistoryChecks.Wait(releaseVm.UpdateSuggestionsAsync()); Pump();
+        Check(releasePopup.IsOpen && releaseOptions.Items.Count == 2 && releaseVm.VersionId == "741",
+            "Editable release dropdown uses actual XAML bindings to show matching Player releases");
+        releaseOptions.SelectedIndex = 0; Pump();
+        Check(releaseVm.VersionId == "0.741.0.7411059" && releaseInput.Text == releaseVm.VersionId && !releasePopup.IsOpen && suggestionInstalls == 0,
+            "Selecting an actual dropdown item fills the full release and never starts installation");
+        releaseInput.Text = "742";
+        releaseInput.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty)!.UpdateSource();
+        HistoryChecks.Wait(releaseVm.UpdateSuggestionsAsync()); Pump();
+        Check(releaseVm.VersionId == "742" && releaseOptions.Items.Count == 1 && releasePopup.IsOpen,
+            "Editing a selected release to another family replaces the dropdown without losing typed text");
+        releaseVm.CancelLookup();
+        }
+        finally
+        {
+            if (fixtureWindow.Content is System.Windows.Controls.Frame fixtureFrame) fixtureFrame.Content = null;
+            fixtureWindow.Content = null;
+            fixtureWindow.Close();
+        }
     }
 
     private static void Pump()

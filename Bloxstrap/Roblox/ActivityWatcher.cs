@@ -390,8 +390,8 @@ namespace Bloxstrap.Roblox
                 Data.IsTeleport = _teleportMarker;
                 if (_reservedTeleportMarker) Data.ServerType = ServerType.Reserved;
                 _teleportMarker = _reservedTeleportMarker = false;
-                if (App.Settings.Prop.ShowServerDetails && Data.MachineAddressValid) _ = Data.QueryServerLocation();
-                if (App.Settings.Prop.ShowServerUptime) _ = Data.QueryServerTime();
+                if (App.Settings.Prop.ShowServerDetails && Data.MachineAddressValid) _ = Data.QueryServerLocation(showErrors: false);
+                if (App.Settings.Prop.ShowServerUptime) _ = Data.QueryServerTime(showErrors: false);
                 App.Logger.WriteLine(LOG_IDENT, $"Joining Game ({Data})");
                 return;
             }

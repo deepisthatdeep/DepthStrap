@@ -92,6 +92,17 @@ namespace Bloxstrap.Models.Entities
         public ICommand CopyServerIdCommand => new RelayCommand(CopyServerId);
         public ICommand DeleteHistoryCommand => new RelayCommand(DeleteHistory);
 
+        internal HttpClient QueryClient { get; init; } = App.HttpClient;
+        internal Action<Exception>? QueryErrorReporter { get; init; }
+
+        private void ReportQueryError(Exception error, string service)
+        {
+            if (QueryErrorReporter is not null) { QueryErrorReporter(error); return; }
+            Frontend.ShowConnectivityDialog(
+                string.Format(Strings.Dialog_Connectivity_UnableToConnect, service),
+                Strings.ActivityWatcher_LocationQueryFailed, MessageBoxImage.Warning, error);
+        }
+
         private SemaphoreSlim serverQuerySemaphore = new(1, 1);
         private SemaphoreSlim serverTimeSemaphore = new(1, 1);
 
@@ -110,73 +121,52 @@ namespace Bloxstrap.Models.Entities
             return deeplink;
         }
 
-        public async Task<DateTime?> QueryServerTime()
+        public async Task<DateTime?> QueryServerTime(CancellationToken cancellationToken = default, bool showErrors = true)
         {
             const string LOG_IDENT = "ActivityData::QueryServerTime";
+            if (string.IsNullOrEmpty(JobId)) throw new InvalidOperationException("JobId is null");
+            if (PlaceId == 0) throw new InvalidOperationException("PlaceId is null");
 
-            if (string.IsNullOrEmpty(JobId))
-                throw new InvalidOperationException("JobId is null");
-
-            if (PlaceId == 0)
-                throw new InvalidOperationException("PlaceId is null");
-
-            await serverTimeSemaphore.WaitAsync();
-
-            if (GlobalCache.ServerTime.TryGetValue(JobId, out DateTime? time))
-            {
-                serverTimeSemaphore.Release();
-                return time;
-            }
-
-            DateTime? firstSeen = DateTime.UtcNow;
+            await serverTimeSemaphore.WaitAsync(cancellationToken);
             try
             {
-                var serverTimeRaw = await Http.GetJson<RoValraTimeResponse>($"https://apis.rovalra.com/v1/server_details?place_id={PlaceId}&server_ids={JobId}");
+                if (GlobalCache.ServerTime.TryGetValue(JobId, out DateTime? time)) return time;
+                using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                budget.CancelAfter(TimeSpan.FromSeconds(5));
+                string raw = await QueryClient.GetStringAsync($"https://apis.rovalra.com/v1/server_details?place_id={PlaceId}&server_ids={JobId}", budget.Token);
+                var response = JsonSerializer.Deserialize<RoValraTimeResponse>(raw)
+                    ?? throw new InvalidHTTPResponseException("Server time response was empty");
 
-                var serverBody = new RoValraProcessServerBody
-                {
-                    PlaceId = PlaceId,
-                    ServerIds = new() { JobId }
-                };
-
-                string json = JsonSerializer.Serialize(serverBody);
-                HttpContent postContent = new StringContent(json, Encoding.UTF8, "application/json");
-
-                // we dont need to await it since its not as important
-                // we want to return uptime quickly
-                _ = App.HttpClient.PostAsync("https://apis.rovalra.com/process_servers", postContent);
-
-
-                RoValraServer? server = null;
-
-                if (serverTimeRaw?.Servers != null && serverTimeRaw.Servers.Count > 0)
-                    server = serverTimeRaw.Servers[0];
-
-                // if the server hasnt been registered we will simply return UtcNow
-                // since firstSeen is UtcNow by default we dont have to check anything else
-                if (server?.FirstSeen != null)
-                    firstSeen = server.FirstSeen;
-
-                GlobalCache.ServerTime[JobId] = firstSeen;
-                serverTimeSemaphore.Release();
+                // Register unknown servers for a later lookup without inventing an uptime.
+                _ = RegisterServerAsync(cancellationToken);
+                DateTime? firstSeen = response.Servers?.FirstOrDefault()?.FirstSeen;
+                if (firstSeen is not null) GlobalCache.ServerTime[JobId] = firstSeen;
+                return firstSeen;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 App.Logger.WriteLine(LOG_IDENT, $"Failed to get server time for {PlaceId}/{JobId}");
                 App.Logger.WriteException(LOG_IDENT, ex);
-
-                GlobalCache.ServerTime[JobId] = firstSeen;
-                serverTimeSemaphore.Release();
-
-                Frontend.ShowConnectivityDialog(
-                    string.Format(Strings.Dialog_Connectivity_UnableToConnect, "rovalra.com"),
-                    Strings.ActivityWatcher_LocationQueryFailed,
-                    MessageBoxImage.Warning,
-                    ex
-                );
+                if (showErrors) ReportQueryError(ex, "rovalra.com");
+                return null;
             }
+            finally { serverTimeSemaphore.Release(); }
+        }
 
-            return firstSeen;
+        private async Task RegisterServerAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                budget.CancelAfter(TimeSpan.FromSeconds(5));
+                var body = new RoValraProcessServerBody { PlaceId = PlaceId, ServerIds = new() { JobId } };
+                using var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+                using var response = await QueryClient.PostAsync("https://apis.rovalra.com/process_servers", content, budget.Token);
+                response.EnsureSuccessStatusCode();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+            catch (Exception ex) { App.Logger.WriteException("ActivityData::RegisterServerAsync", ex); }
         }
 
         public async Task<string?> QueryServerLocation(CancellationToken cancellationToken = default, bool showErrors = true)
@@ -188,25 +178,23 @@ namespace Bloxstrap.Models.Entities
 
             await serverQuerySemaphore.WaitAsync(cancellationToken);
 
-            if (GlobalCache.ServerLocation.TryGetValue(MachineAddress, out string? location))
-            {
-                LastLocationSource = "cached";
-                serverQuerySemaphore.Release();
-                return location;
-            }
-
             try
             {
+                if (GlobalCache.ServerLocation.TryGetValue(MachineAddress, out string? location))
+                {
+                    LastLocationSource = "cached";
+                    return location;
+                }
                 // Try RoValra API first
                 try
                 {
                     using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     budget.CancelAfter(TimeSpan.FromSeconds(5));
-                    string raw = await App.HttpClient.GetStringAsync($"https://apis.rovalra.com/v1/geolocation?ip={MachineAddress}", budget.Token);
+                    string raw = await QueryClient.GetStringAsync($"https://apis.rovalra.com/v1/geolocation?ip={MachineAddress}", budget.Token);
                     var response = JsonSerializer.Deserialize<RoValraGeolocation>(raw)!;
                     var geolocation = response.Location;
 
-                    if (geolocation is not null)
+                    if (!string.IsNullOrWhiteSpace(geolocation?.City) && !string.IsNullOrWhiteSpace(geolocation.Country))
                     {
                         if (geolocation.City == geolocation.Region && geolocation.City == geolocation.Country)
                             location = geolocation.Country;
@@ -218,10 +206,10 @@ namespace Bloxstrap.Models.Entities
                         App.Logger.WriteLine(LOG_IDENT, $"Got location from RoValra: {location}");
                         LastLocationSource = "RoValra IP geolocation";
                         GlobalCache.ServerLocation[MachineAddress] = location;
-                        serverQuerySemaphore.Release();
                         return location;
                     }
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
                 catch (Exception rovalraEx)
                 {
                     App.Logger.WriteLine(LOG_IDENT, $"RoValra API failed, falling back to ipinfo.io: {rovalraEx.Message}");
@@ -231,7 +219,7 @@ namespace Bloxstrap.Models.Entities
                 cancellationToken.ThrowIfCancellationRequested();
                 using var fallbackBudget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 fallbackBudget.CancelAfter(TimeSpan.FromSeconds(5));
-                string fallbackRaw = await App.HttpClient.GetStringAsync($"https://ipinfo.io/{MachineAddress}/json", fallbackBudget.Token);
+                string fallbackRaw = await QueryClient.GetStringAsync($"https://ipinfo.io/{MachineAddress}/json", fallbackBudget.Token);
                 var ipInfo = JsonSerializer.Deserialize<IPInfoResponse>(fallbackRaw)!;
 
                 if (string.IsNullOrEmpty(ipInfo.City))
@@ -245,25 +233,19 @@ namespace Bloxstrap.Models.Entities
                 App.Logger.WriteLine(LOG_IDENT, $"Got location from ipinfo.io: {location}");
                 LastLocationSource = "ipinfo.io";
                 GlobalCache.ServerLocation[MachineAddress] = location;
-                serverQuerySemaphore.Release();
                 return location;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 App.Logger.WriteLine(LOG_IDENT, $"Failed to get server location for {MachineAddress}");
                 App.Logger.WriteException(LOG_IDENT, ex);
 
-                serverQuerySemaphore.Release();
 
-                if (showErrors) Frontend.ShowConnectivityDialog(
-                    string.Format(Strings.Dialog_Connectivity_UnableToConnect, "rovalra.com/ipinfo.io"),
-                    Strings.ActivityWatcher_LocationQueryFailed,
-                    MessageBoxImage.Warning,
-                    ex
-                );
-
-                return location;
+                if (showErrors) ReportQueryError(ex, "rovalra.com/ipinfo.io");
+                return null;
             }
+            finally { serverQuerySemaphore.Release(); }
         }
 
         public void RejoinServer(bool CloseRoblox = true)

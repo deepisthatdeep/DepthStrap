@@ -65,6 +65,7 @@
                     <ui:NavigationItem Content="Roblox Launch" PageType="{x:Type pages:AdvancedRobloxSettingsPage}" Icon="PlaySettings20" IconSize="20" Tag="advancedroblox" />
                     <!-- app-level settings (channel, static dir, cleaner, dialog customization) -->
                     <ui:NavigationItem Content="DepthStrap Settings" PageType="{x:Type pages:DepthStrapSettingsPage}" Icon="Settings20" IconSize="20" Tag="depthstrapsettings" />
+                    <ui:NavigationItem Content="Anti Api ( Beta )" PageType="{x:Type pages:AntiApiPage}" Icon="Toolbox24" IconSize="20" Tag="antiapi" />
                     <ui:NavigationItem Content="{x:Static resources:Strings.Menu_Appearance_Title}" PageType="{x:Type pages:AppearancePage}" Icon="PaintBrush24" IconSize="20" Tag="appearance" />
                 </ui:NavigationCompact.Items>
                 <!-- About removed from navigation (window code kept dormant; OpenAboutCommand still available) -->

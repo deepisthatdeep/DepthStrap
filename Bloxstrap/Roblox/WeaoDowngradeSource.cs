@@ -13,6 +13,13 @@ namespace Bloxstrap.Roblox
             string? version = document.RootElement.GetProperty("Windows").GetString();
             if (version is not null && !version.StartsWith("version-", StringComparison.Ordinal)) version = "version-" + version;
             if (!RobloxVersionArchive.IsVersionId(version)) throw new InvalidDataException("WEAO RDD returned an invalid Windows Player version.");
+            if (document.RootElement.TryGetProperty("WindowsResponse", out var response))
+            {
+                if (response.ValueKind != JsonValueKind.Object || !response.TryGetProperty("version", out var number) || number.ValueKind != JsonValueKind.String ||
+                    !RobloxReleaseLookup.IsReleaseNumber(number.GetString()) ||
+                    !RobloxReleaseLookup.ParseCatalog(json, number.GetString()!, true).Any())
+                    throw new InvalidDataException("WEAO RDD returned inconsistent Windows Player release details.");
+            }
             return version!.ToLowerInvariant();
         }
         public static async Task<string> GetPreviousAsync(CancellationToken token = default)

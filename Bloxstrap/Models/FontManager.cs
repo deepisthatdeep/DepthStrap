@@ -6,6 +6,21 @@ namespace Bloxstrap.Models
     {
         public static bool IsCustomFontApplied { get; private set; }
 
+        internal static bool ApplySavedFont(Window window)
+        {
+            string? path = App.Settings.Prop.CustomFontPath;
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return false;
+            try
+            {
+                var font = LoadFontFromFile(path);
+                if (font is null) return false;
+                window.FontFamily = font;
+                return true;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            { App.Logger.WriteException("FontManager::ApplySavedFont", ex); return false; }
+        }
+
         public static System.Windows.Media.FontFamily? LoadFontFromFile(string fontFilePath)
         {
             if (!File.Exists(fontFilePath))

@@ -35,7 +35,7 @@ namespace Bloxstrap.Integrations
             var entries = await GetDatacenterEntriesAsync(token);
             if (entries is null) return null;
             var map = new Dictionary<int, string>();
-            foreach (var entry in entries.Where(x => !x.Inactive && x.Location is not null))
+            foreach (var entry in entries.Where(x => x is not null && !x.Inactive && x.Location is not null && x.DataCenterIds is not null))
             {
                 string region = string.Join(", ", new[] { entry.Location.City, entry.Location.Country }.Where(x => !string.IsNullOrWhiteSpace(x)));
                 if (region.Length == 0) continue;

@@ -14,7 +14,7 @@ namespace Bloxstrap.UI
             if (App.LaunchSettings.QuietFlag.Active)
                 return defaultResult;
 
-            return ShowFluentMessageBox(message, icon, buttons);
+            return ShowFluentMessageBox(message, icon, buttons, defaultResult);
         }
 
         public static void ShowPlayerErrorDialog(bool crash = false)
@@ -85,11 +85,11 @@ namespace Bloxstrap.UI
         }
 
         public static IBootstrapperDialog GetBootstrapperDialog(BootstrapperStyle style) => new DepthStrapDialog();
-        private static MessageBoxResult ShowFluentMessageBox(string message, MessageBoxImage icon, MessageBoxButton buttons)
+        private static MessageBoxResult ShowFluentMessageBox(string message, MessageBoxImage icon, MessageBoxButton buttons, MessageBoxResult defaultResult)
         {
             return Application.Current.Dispatcher.Invoke(new Func<MessageBoxResult>(() =>
             {
-                var messagebox = new FluentMessageBox(message, icon, buttons);
+                var messagebox = new FluentMessageBox(message, icon, buttons, defaultResult);
                 messagebox.ShowDialog();
                 return messagebox.Result;
             }));

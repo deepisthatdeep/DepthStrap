@@ -660,7 +660,7 @@ Would you like to upgrade your currently installed version?</value>
     <value>Inspirations</value>
   </data>
   <data name="Menu.About.Description" xml:space="preserve">
-    <value>A DepthStrap/DepthStrap Fork.</value>
+    <value>An advanced Roblox app for Windows.</value>
   </data>
   <data name="Menu.About.DiscordServer" xml:space="preserve">
     <value>Discord Server</value>

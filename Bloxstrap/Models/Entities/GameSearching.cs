@@ -18,7 +18,10 @@ namespace Bloxstrap.Models.Entities
     {
         private const string LOG_IDENT = "GameSearching";
 
-        public static async Task<List<OmniSearchContent>> GetGameSearchResultsAsync(string searchQuery)
+        public static Task<List<OmniSearchContent>> GetGameSearchResultsAsync(string searchQuery, CancellationToken token = default)
+            => GetGameSearchResultsAsync(searchQuery, token, App.HttpClient);
+
+        internal static async Task<List<OmniSearchContent>> GetGameSearchResultsAsync(string searchQuery, CancellationToken token, HttpClient client)
         {
             var results = new List<OmniSearchContent>();
 
@@ -32,7 +35,10 @@ namespace Bloxstrap.Models.Entities
             {
                 string url = $"https://apis.{Deployment.RobloxDomain}/search-api/omni-search?searchQuery={Uri.EscapeDataString(searchQuery)}&sessionid=0&pageType=Game";
 
-                var response = await Http.GetJson<OmniSearchResponse>(url);
+                using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
+                budget.CancelAfter(TimeSpan.FromSeconds(15));
+                var json = await client.GetStringAsync(url, budget.Token);
+                var response = JsonSerializer.Deserialize<OmniSearchResponse>(json);
 
                 if (response?.SearchResults is null)
                 {
@@ -46,13 +52,13 @@ namespace Bloxstrap.Models.Entities
                 {
                     if (results.Count >= 5) break;
 
-                    if (group.Contents is null) continue;
+                    if (group?.Contents is null) continue;
 
                     foreach (var item in group.Contents)
                     {
                         if (results.Count >= 5) break;
 
-                        if (item.UniverseId == 0 || !seenUniverses.Add(item.UniverseId))
+                        if (item is null || item.UniverseId == 0 || item.RootPlaceId <= 0 || !seenUniverses.Add(item.UniverseId))
                             continue;
 
                         results.Add(new OmniSearchContent
@@ -68,6 +74,7 @@ namespace Bloxstrap.Models.Entities
             catch (Exception ex)
             {
                 App.Logger.WriteLine(LOG_IDENT, $"Error fetching search results: {ex.Message}");
+                throw;
             }
 
             return results;

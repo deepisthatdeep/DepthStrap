@@ -26,6 +26,10 @@ namespace Bloxstrap.UI.ViewModels.Settings
         private readonly HashSet<string> _displayedServerIds = new();
         private readonly DepthStrapServerBrowser _fetcher;
         private readonly Action<string> _launch;
+        private readonly Func<string, CancellationToken, Task<List<OmniSearchContent>>> _searchGames;
+        private readonly Func<List<ThumbnailRequest>, CancellationToken, Task<string?[]>> _loadThumbnails;
+        private int _gameSearchVersion;
+        private CancellationTokenSource? _gameSearchCts;
         private int _queryVersion;
         internal const string AllRegions = "All regions";
         private Dictionary<int, string>? _dcMap;
@@ -83,10 +87,14 @@ namespace Bloxstrap.UI.ViewModels.Settings
         public IAsyncRelayCommand SearchGamesCommand { get; }
 
         public RegionSelectorViewModel() : this(new DepthStrapServerBrowser()) { }
-        internal RegionSelectorViewModel(DepthStrapServerBrowser fetcher, Action<string>? launch = null)
+        internal RegionSelectorViewModel(DepthStrapServerBrowser fetcher, Action<string>? launch = null,
+            Func<string, CancellationToken, Task<List<OmniSearchContent>>>? searchGames = null,
+            Func<List<ThumbnailRequest>, CancellationToken, Task<string?[]>>? loadThumbnails = null)
         {
             _fetcher = fetcher;
             _launch = launch ?? (uri => Process.Start(new ProcessStartInfo { FileName = uri, UseShellExecute = true }));
+            _searchGames = searchGames ?? GameSearching.GetGameSearchResultsAsync;
+            _loadThumbnails = loadThumbnails ?? Thumbnails.GetThumbnailUrlsAsync;
             Regions.Add(AllRegions);
             if (string.IsNullOrWhiteSpace(App.Settings.Prop.SelectedRegion)) App.Settings.Prop.SelectedRegion = AllRegions;
             Servers.CollectionChanged += (_, _) => {
@@ -102,6 +110,8 @@ namespace Bloxstrap.UI.ViewModels.Settings
 
         partial void OnSearchQueryChanged(string value)
         {
+            CancelGameSearch();
+            SearchResults.Clear();
             PlaceId = long.TryParse(value, out _) ? value : "";
 
             _searchDebounceCts?.Cancel();
@@ -167,6 +177,14 @@ namespace Bloxstrap.UI.ViewModels.Settings
         internal void StopPendingRequests()
         {
             _scanCts?.Cancel(); _searchDebounceCts?.Cancel();
+            CancelGameSearch();
+        }
+        private void CancelGameSearch()
+        {
+            _gameSearchVersion++;
+            _gameSearchCts?.Cancel();
+            _gameSearchCts = null;
+            IsGameSearchLoading = false;
         }
         internal async Task InitializeRegionsAsync()
         {
@@ -367,16 +385,22 @@ namespace Bloxstrap.UI.ViewModels.Settings
             catch { return null; }
         }
 
-        private async Task SearchGamesAsync(CancellationToken token = default)
+        internal async Task SearchGamesAsync(CancellationToken token = default)
         {
             if (string.IsNullOrWhiteSpace(SearchQuery) || long.TryParse(SearchQuery, out _)) return;
 
+            _gameSearchCts?.Cancel();
+            int version = ++_gameSearchVersion;
+            string query = SearchQuery;
+            using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
+            budget.CancelAfter(TimeSpan.FromSeconds(15));
+            _gameSearchCts = budget;
             IsGameSearchLoading = true;
             try
             {
-                var results = await GameSearching.GetGameSearchResultsAsync(SearchQuery);
+                var results = await _searchGames(query, budget.Token);
 
-                if (token.IsCancellationRequested) return;
+                if (budget.IsCancellationRequested || version != _gameSearchVersion) return;
 
                 if (results.Any())
                 {
@@ -387,28 +411,35 @@ namespace Bloxstrap.UI.ViewModels.Settings
                         Size = "128x128"
                     }).ToList();
 
-                    var urls = await Thumbnails.GetThumbnailUrlsAsync(thumbRequests, token);
-
-                    if (token.IsCancellationRequested) return;
-
-                    for (int i = 0; i < results.Count && i < urls.Length; i++) results[i].ThumbnailUrl = urls[i];
+                    try
+                    {
+                        var urls = await _loadThumbnails(thumbRequests, budget.Token);
+                        for (int i = 0; i < results.Count && i < urls.Length; i++) results[i].ThumbnailUrl = urls[i];
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex) { App.Logger.WriteException(LOG_IDENT, ex); }
                 }
 
                 Application.Current.Dispatcher.Invoke(() =>
                 {
+                    if (budget.IsCancellationRequested || version != _gameSearchVersion) return;
                     SearchResults.Clear();
                     foreach (var r in results)
                         SearchResults.Add(r);
                 });
             }
-            catch (OperationCanceledException) { /* This is now handled silently */ }
+            catch (OperationCanceledException)
+            {
+                if (version == _gameSearchVersion) LoadingMessage = "Game search stopped or timed out. Try again.";
+            }
             catch (Exception ex)
             {
                 App.Logger.WriteLine(LOG_IDENT, $"Game search failed: {ex.Message}");
+                if (version == _gameSearchVersion) LoadingMessage = "Game search unavailable. Try again later, or enter a Place ID.";
             }
             finally
             {
-                IsGameSearchLoading = false;
+                if (version == _gameSearchVersion) { _gameSearchCts = null; IsGameSearchLoading = false; }
             }
         }
 

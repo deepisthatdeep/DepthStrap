@@ -8,71 +8,93 @@ namespace Bloxstrap.UI.Elements.Settings.Pages
 {
     public partial class RegionSelectorPage
     {
-        private bool _windowBindingsAttached = false;
         private bool _pageBindingsAttached;
+        private readonly RoutedCommand _focusSearchCommand = new();
+        private readonly RoutedCommand _focusRegionCommand = new();
+        private readonly List<CommandBinding> _windowCommands = new();
+        private readonly List<KeyBinding> _windowKeys = new();
+        private Window? _boundWindow;
+        private int _loadVersion;
+        internal Task RegionsLoadTask { get; private set; } = Task.CompletedTask;
 
-        public RegionSelectorPage()
+        public RegionSelectorPage() : this(new RegionSelectorViewModel()) { }
+        internal RegionSelectorPage(RegionSelectorViewModel viewModel)
         {
-            DataContext = new RegionSelectorViewModel();
+            DataContext = viewModel;
             InitializeComponent();
-
             Loaded += RegionSelectorPage_Loaded;
-            Unloaded += (_, _) => ((RegionSelectorViewModel)DataContext).StopPendingRequests();
-
+            Unloaded += (_, _) =>
+            {
+                _loadVersion++;
+                viewModel.StopPendingRequests();
+                DetachWindowBindings();
+            };
             App.FrostRPC?.SetPage("Region Selector");
         }
 
-        private async void RegionSelectorPage_Loaded(object? sender, RoutedEventArgs e)
+        private void RegionSelectorPage_Loaded(object? sender, RoutedEventArgs e)
         {
-            if (_pageBindingsAttached) return;
-            _pageBindingsAttached = true;
-            var focusSearchCmd = new RoutedCommand();
-            CommandBindings.Add(new CommandBinding(focusSearchCmd, (_, __) => FocusSearch()));
-            InputBindings.Add(new KeyBinding(focusSearchCmd, Key.E, ModifierKeys.Control));
-
-            var focusRegionCmd = new RoutedCommand();
-            CommandBindings.Add(new CommandBinding(focusRegionCmd, (_, __) => FocusRegion()));
-            InputBindings.Add(new KeyBinding(focusRegionCmd, Key.K, ModifierKeys.Control));
-
-            AttachBindingsToWindow(focusSearchCmd, focusRegionCmd);
-
-            SearchComboBox.PreviewKeyDown += SearchComboBox_PreviewKeyDown;
-            RegionComboBox.PreviewKeyDown += ComboBoxOpenOnArrow_PreviewKeyDown;
-
-            SearchComboBox.Loaded += (_, __) =>
+            if (!_pageBindingsAttached)
             {
-                if (SearchComboBox.Template.FindName("PART_EditableTextBox", SearchComboBox) is TextBox tb)
-                {
-                    tb.PreviewKeyDown += SearchEditable_PreviewKeyDown;
-                }
-            };
-            await ((RegionSelectorViewModel)DataContext).InitializeRegionsAsync();
+                _pageBindingsAttached = true;
+                CommandBindings.Add(new CommandBinding(_focusSearchCommand, (_, __) => FocusSearch()));
+                InputBindings.Add(new KeyBinding(_focusSearchCommand, Key.E, ModifierKeys.Control));
+                CommandBindings.Add(new CommandBinding(_focusRegionCommand, (_, __) => FocusRegion()));
+                InputBindings.Add(new KeyBinding(_focusRegionCommand, Key.K, ModifierKeys.Control));
+                SearchComboBox.PreviewKeyDown += SearchComboBox_PreviewKeyDown;
+                RegionComboBox.PreviewKeyDown += ComboBoxOpenOnArrow_PreviewKeyDown;
+                SearchComboBox.Loaded += (_, __) => AttachEditableSearchHandler();
+            }
+            AttachEditableSearchHandler();
+            AttachBindingsToWindow();
+            RegionsLoadTask = LoadRegionsAsync(++_loadVersion, RegionsLoadTask);
         }
 
-        private void AttachBindingsToWindow(RoutedCommand focusSearchCmd, RoutedCommand focusRegionCmd)
+        private async Task LoadRegionsAsync(int version, Task previous)
         {
-            if (_windowBindingsAttached)
-                return;
+            await previous;
+            if (version != _loadVersion) return;
+            var viewModel = (RegionSelectorViewModel)DataContext;
+            if (viewModel.Regions.Count <= 1) await viewModel.InitializeRegionsAsync();
+        }
 
-            var wnd = Window.GetWindow(this);
-            if (wnd == null)
+        private void AttachEditableSearchHandler()
+        {
+            if (SearchComboBox.Template?.FindName("PART_EditableTextBox", SearchComboBox) is TextBox textBox)
             {
-                Dispatcher.BeginInvoke(new System.Action(() => AttachBindingsToWindow(focusSearchCmd, focusRegionCmd)));
-                return;
+                textBox.PreviewKeyDown -= SearchEditable_PreviewKeyDown;
+                textBox.PreviewKeyDown += SearchEditable_PreviewKeyDown;
             }
+        }
 
-            wnd.CommandBindings.Add(new CommandBinding(focusSearchCmd, (_, __) => FocusSearch()));
-            wnd.InputBindings.Add(new KeyBinding(focusSearchCmd, Key.E, ModifierKeys.Control));
+        private void AttachBindingsToWindow()
+        {
+            var window = Window.GetWindow(this);
+            if (ReferenceEquals(window, _boundWindow)) return;
+            DetachWindowBindings();
+            if (window is null) return;
+            _boundWindow = window;
+            _windowCommands.Add(new CommandBinding(_focusSearchCommand, (_, __) => FocusSearch()));
+            _windowCommands.Add(new CommandBinding(_focusRegionCommand, (_, __) => FocusRegion()));
+            _windowKeys.Add(new KeyBinding(_focusSearchCommand, Key.E, ModifierKeys.Control));
+            _windowKeys.Add(new KeyBinding(_focusRegionCommand, Key.K, ModifierKeys.Control));
+            foreach (var binding in _windowCommands) window.CommandBindings.Add(binding);
+            foreach (var binding in _windowKeys) window.InputBindings.Add(binding);
+        }
 
-            wnd.CommandBindings.Add(new CommandBinding(focusRegionCmd, (_, __) => FocusRegion()));
-            wnd.InputBindings.Add(new KeyBinding(focusRegionCmd, Key.K, ModifierKeys.Control));
-
-            _windowBindingsAttached = true;
+        private void DetachWindowBindings()
+        {
+            if (_boundWindow is not null)
+            {
+                foreach (var binding in _windowCommands) _boundWindow.CommandBindings.Remove(binding);
+                foreach (var binding in _windowKeys) _boundWindow.InputBindings.Remove(binding);
+            }
+            _windowCommands.Clear(); _windowKeys.Clear(); _boundWindow = null;
         }
 
         private void FocusSearch()
         {
-            if (SearchComboBox.Template.FindName("PART_EditableTextBox", SearchComboBox) is TextBox tb)
+            if (SearchComboBox.Template?.FindName("PART_EditableTextBox", SearchComboBox) is TextBox tb)
             {
                 tb.Focus();
                 tb.Select(tb.Text?.Length ?? 0, 0);

@@ -32,6 +32,8 @@ namespace Bloxstrap
         public LaunchFlag NoGPUFlag                 { get; } = new("nogpu");
 
         public LaunchFlag UpgradeFlag               { get; } = new("upgrade");
+        public LaunchFlag UpdateHandoffFlag         { get; } = new("updatehandoff");
+        public LaunchFlag SkipAppUpdateFlag         { get; } = new("skipappupdate");
         
         public LaunchFlag PlayerFlag                { get; } = new("player");
         
@@ -69,9 +71,15 @@ namespace Bloxstrap
             const string LOG_IDENT = "LaunchSettings::LaunchSettings";
 
 #if DEBUG
-            App.Logger.WriteLine(LOG_IDENT, $"Launched with arguments: {string.Join(' ', args)}");
+            App.Logger.WriteLine(LOG_IDENT, $"Launched with {args.Length} arguments.");
 #endif
 
+            // Earlier app updaters prepended this boolean flag, hiding the implicit
+            // Roblox URI/version argument from the first-slot parser below.
+            if (args.Length > 1 && args[0] == "-upgrade" &&
+                (args[1].StartsWith("roblox:", StringComparison.OrdinalIgnoreCase) ||
+                 args[1].StartsWith("roblox-player:", StringComparison.OrdinalIgnoreCase) || args[1].StartsWith("version-")))
+                args = args.Skip(1).Append("-upgrade").ToArray();
             Args = args;
 
             Dictionary<string, LaunchFlag> flagMap = new();

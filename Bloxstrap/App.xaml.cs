@@ -141,6 +141,13 @@ namespace Bloxstrap
             if (log)
                 Logger.WriteException("App::FinalizeExceptionHandling", ex);
 
+            if (AppUpdater.CanResumeFailedUpdate(LaunchSettings) && AppUpdater.TryResumeInstalled())
+            {
+                Logger.WriteLine("App::FinalizeExceptionHandling", "Failed app updater resumed the installed app once.");
+                Terminate(ErrorCode.ERROR_INSTALL_FAILURE);
+                return;
+            }
+
             if (_showingExceptionDialog)
                 return;
 
@@ -180,6 +187,19 @@ namespace Bloxstrap
 
         private static void ApplyBackdropToAllWindows(WindowsBackdrops backdropType)
         {
+            foreach (Window window in Current.Windows)
+                if (window is UiWindow uiWindow) ApplyWindowBackdrop(uiWindow, backdropType);
+        }
+
+        internal static void ApplyWindowBackdrop(UiWindow uiWindow, WindowsBackdrops backdropType)
+        {
+            // Native-title-bar dialogs keep their themed content surface; this
+            // WPF UI backdrop implementation requires an extended client area.
+            if (!uiWindow.ExtendsContentIntoTitleBar)
+            {
+                uiWindow.WindowBackdropType = BackgroundType.None;
+                return;
+            }
             var wpfBackdrop = backdropType switch
             {
                 WindowsBackdrops.None => BackgroundType.None,
@@ -189,35 +209,26 @@ namespace Bloxstrap
                 _ => BackgroundType.None
             };
 
-            foreach (Window window in Current.Windows)
+            bool transparent = wpfBackdrop is BackgroundType.Acrylic or BackgroundType.Aero;
+            bool initialized = new WindowInteropHelper(uiWindow).Handle != IntPtr.Zero;
+            if (initialized && uiWindow.AllowsTransparency != transparent)
             {
-                if (window is UiWindow uiWindow)
-                {
-                    bool isTransparentBackdrop = (wpfBackdrop == BackgroundType.Acrylic || wpfBackdrop == BackgroundType.Aero);
-
-                    uiWindow.AllowsTransparency = isTransparentBackdrop;
-
-                    uiWindow.WindowStyle = isTransparentBackdrop
-                        ? WindowStyle.None
-                        : WindowStyle.SingleBorderWindow;
-
-                    uiWindow.WindowBackdropType = wpfBackdrop;
-                }
-            }
-        }
-
-        public void ApplyCustomFontToWindow(Window window)
-        {
-            var fontPath = Settings.Prop.CustomFontPath;
-            if (string.IsNullOrWhiteSpace(fontPath) || !File.Exists(fontPath))
+                // WPF cannot change its composition mode after a native handle
+                // exists. The saved choice takes effect on the next window.
+                Logger.WriteLine("Appearance", "Backdrop composition change deferred until this window is reopened.");
+                uiWindow.WindowBackdropType = BackgroundType.None;
                 return;
-
-            var font = FontManager.LoadFontFromFile(fontPath);
-            if (font != null)
-            {
-                window.FontFamily = font;
             }
+            if (!initialized)
+            {
+                if (transparent) uiWindow.WindowStyle = WindowStyle.None;
+                uiWindow.AllowsTransparency = transparent;
+                if (!transparent) uiWindow.WindowStyle = WindowStyle.SingleBorderWindow;
+            }
+            uiWindow.WindowBackdropType = wpfBackdrop;
         }
+
+        public void ApplyCustomFontToWindow(Window window) => FontManager.ApplySavedFont(window);
 
         public static void AssertWindowsOSVersion()
         {
@@ -237,6 +248,14 @@ namespace Bloxstrap
 
         protected override async void OnStartup(StartupEventArgs e)
         {
+            // This installed app also hosts the explicitly elevated MAC action.
+            // Dispatch before any launcher, installer or normal settings work.
+            if (e.Args.Length > 0 && e.Args[0] is "--mac-apply" or "--mac-restore")
+            {
+                DepthStrap.Recovery.MacControls.RunHelper(e.Args);
+                Shutdown(Environment.ExitCode);
+                return;
+            }
             const string LOG_IDENT = "App::OnStartup";
 
             Locale.Initialize();
@@ -405,11 +424,25 @@ namespace Bloxstrap
 
                 Locale.Set(Settings.Prop.Locale);
 
+                if (LaunchSettings.UpdateHandoffFlag.Active &&
+                    (!LaunchSettings.UpgradeFlag.Active || !AppUpdateHandoff.Accept(LaunchSettings.UpdateHandoffFlag.Data)))
+                {
+                    Logger.WriteLine(LOG_IDENT, "App update handoff was cancelled or could not be acknowledged.");
+                    Terminate();
+                    return;
+                }
+
                 if (!LaunchSettings.BypassUpdateCheck)
                 {
                     Installer.HandleUpgrade();
                     if (LaunchSettings.UpgradeFlag.Active && !AppUpdater.IsInstalledVersion(Paths.Application, Version))
                     {
+                        if (AppUpdater.CanResumeFailedUpdate(LaunchSettings) && AppUpdater.TryResumeInstalled())
+                        {
+                            Logger.WriteLine(LOG_IDENT, "App update deferred; resumed the installed app with its original launch action.");
+                            Terminate();
+                            return;
+                        }
                         Frontend.ShowMessageBox("DepthStrap could not finish the app update. Close other DepthStrap windows and try again. Your previous installed version was preserved.", MessageBoxImage.Warning);
                         Terminate();
                         return;

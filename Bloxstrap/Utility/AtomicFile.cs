@@ -12,7 +12,7 @@ namespace Bloxstrap.Utility
             throw new IOException("The data file is busy; retry this operation.");
         }
 
-        internal static string ReadText(string path)
+        internal static string ReadText(string path, int? maximumBytes = null)
         {
             using var gate = Lock(path);
             for (int attempt = 0; ; attempt++)
@@ -20,6 +20,26 @@ namespace Bloxstrap.Utility
                 try
                 {
                     using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    if (maximumBytes is int limit)
+                    {
+                        if (limit < 0) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
+                        if (stream.Length > limit) throw new InvalidDataException("The data file exceeds its size limit.");
+                        // Bound the bytes actually read, too: an external writer
+                        // can append after the initial length check.
+                        using var bounded = new MemoryStream();
+                        byte[] buffer = new byte[4096];
+                        long total = 0;
+                        int read;
+                        while ((read = stream.Read(buffer, 0, (int)Math.Min(buffer.Length, (long)limit - total + 1))) > 0)
+                        {
+                            total += read;
+                            if (total > limit) throw new InvalidDataException("The data file grew beyond its size limit.");
+                            bounded.Write(buffer, 0, read);
+                        }
+                        bounded.Position = 0;
+                        using var boundedReader = new StreamReader(bounded);
+                        return boundedReader.ReadToEnd();
+                    }
                     using var reader = new StreamReader(stream);
                     return reader.ReadToEnd();
                 }

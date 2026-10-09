@@ -6,6 +6,22 @@ namespace Bloxstrap.Roblox
         internal const int MaxValueLength = 1_000_000;
         public static Dictionary<string, string> Parse(string json) => ParseDetailed(json).Flags;
 
+        internal static string ReadFile(string path)
+        {
+            using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (input.Length > MaxJsonLength) throw new InvalidDataException("Import is larger than 16 MB.");
+            using var reader = new StreamReader(input, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            var result = new StringBuilder();
+            char[] buffer = new char[8192];
+            int read;
+            while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                if (result.Length + read > MaxJsonLength) throw new InvalidDataException("Import is larger than 16 MB.");
+                result.Append(buffer, 0, read);
+            }
+            return result.ToString();
+        }
+
         internal sealed record ImportResult(Dictionary<string, string> Flags, List<string> UnprefixedNames, int SkippedNulls);
 
         public static ImportResult ParseDetailed(string json)

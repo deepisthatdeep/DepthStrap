@@ -9,13 +9,14 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>True</UseWindowsForms>
     <ApplicationIcon>DepthStrap.ico</ApplicationIcon>
-    <Version>1.0.16</Version>
-    <FileVersion>1.0.16</FileVersion>
+    <Version>1.0.17</Version>
+    <FileVersion>1.0.17</FileVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
 	<AssemblyName>DepthStrap</AssemblyName>
     <Product>$(AssemblyName)</Product>
+    <Description>An advanced Roblox app for Windows with version management, performance profiles and network diagnostics.</Description>
     <RootNamespace>Bloxstrap</RootNamespace>
   </PropertyGroup>
 
@@ -28,10 +29,17 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>DepthStrap.RegressionTests</_Parameter1>
     </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>DepthStrap.RecoveryTests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>
     <Compile Remove="Integrations\Tools\**\*.cs" />
+    <Compile Remove="**\Toolkit\**\*.cs;**\DepthStrapToolkit\**\*.cs" />
+    <EmbeddedResource Remove="**\Toolkit\**\*;**\DepthStrapToolkit\**\*" />
+    <Content Remove="**\Toolkit\**\*;**\DepthStrapToolkit\**\*" />
+    <None Remove="**\Toolkit\**\*;**\DepthStrapToolkit\**\*" />
   </ItemGroup>
 
   <ItemGroup>
@@ -56,6 +64,7 @@
     <Resource Include="Resources\MessageBox\Warning.png" />
     <EmbeddedResource Include="Resources\mappings.json" />
     <EmbeddedResource Include="Resources\NetworkAdapterTuning.ps1" />
+    <EmbeddedResource Include="Recovery\AdapterDriver.ps1" LogicalName="DepthStrap.Recovery.AdapterDriver.ps1" />
     <EmbeddedResource Include="Resources\SkyboxFix\6c94b9385e52d221f0538aadaceead2d" />
     <EmbeddedResource Include="Resources\SkyboxFix\7328622d2d509b95dd4dd2c721d1ca8b" />
     <EmbeddedResource Include="Resources\SkyboxFix\78cb2e93aee0cdbd79b15a866bc93a54" />

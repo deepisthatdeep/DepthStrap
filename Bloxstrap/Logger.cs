@@ -1,4 +1,4 @@
-﻿namespace Bloxstrap
+namespace Bloxstrap
 {
     // https://stackoverflow.com/a/53873141/11852173
 
@@ -12,7 +12,7 @@
         public bool NoWriteMode = false;
         public string? FileLocation;
 
-        public string AsDocument => String.Join('\n', History);
+        public string AsDocument { get { lock (History) return String.Join('\n', History); } }
 
         public void Initialize(bool useTempDir = false)
         {
@@ -33,8 +33,6 @@
                 return;
             }
 
-            Directory.CreateDirectory(directory);
-
             if (File.Exists(location))
             {
                 WriteLine(LOG_IDENT, "Failed to initialize because log file already exists");
@@ -43,11 +41,13 @@
 
             try
             {
+                Directory.CreateDirectory(directory);
                 _filestream = File.Open(location, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
             }
             catch (IOException)
             {
-                WriteLine(LOG_IDENT, "Failed to initialize because log file already exists");
+                NoWriteMode = true;
+                WriteLine(LOG_IDENT, "Diagnostic storage could not be initialized; continuing with in-memory diagnostics.");
                 return;
             }
             catch (UnauthorizedAccessException)
@@ -71,46 +71,53 @@
 
             Initialized = true;
 
-            if (History.Count > 0)
-                WriteToLog(string.Join("\r\n", History));
+            string history;
+            lock (History) history = string.Join("\r\n", History);
+            if (history.Length > 0) WriteToLog(history);
 
             WriteLine(LOG_IDENT, "Finished initializing!");
 
             FileLocation = location;
 
-            // clean up any logs older than a week
-            if (Paths.Initialized && Directory.Exists(Paths.Logs))
+            // Retention owns only generated diagnostic filenames. Other files in
+            // Logs may be user exports or notes and must never be swept by age.
+            try
             {
-                foreach (FileInfo log in new DirectoryInfo(Paths.Logs).GetFiles())
+                if (!Paths.Initialized || !Directory.Exists(Paths.Logs)) return;
+                string pattern = $@"\A{Regex.Escape(App.ProjectName)}_\d{{8}}T\d{{6}}Z(?:_\d+_[a-fA-F0-9]{{32}})?\.log\z";
+                DateTime cutoff = DateTime.UtcNow.AddDays(-7);
+                foreach (FileInfo log in new DirectoryInfo(Paths.Logs).EnumerateFiles("*.log"))
                 {
-                    if (log.LastWriteTimeUtc.AddDays(7) > DateTime.UtcNow)
+                    if (!Regex.IsMatch(log.Name, pattern) || log.LastWriteTimeUtc > cutoff ||
+                        (log.Attributes & FileAttributes.ReparsePoint) != 0)
                         continue;
-
-                    WriteLine(LOG_IDENT, $"Cleaning up old log file '{log.Name}'");
-
                     try
                     {
-                       log.Delete();
+                        log.Delete();
+                        WriteLine(LOG_IDENT, $"Cleaned up old diagnostic log '{log.Name}'");
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
-                        WriteLine(LOG_IDENT, "Failed to delete log!");
-                        WriteException(LOG_IDENT, ex);
+                        WriteLine(LOG_IDENT, "An old diagnostic log could not be deleted; it was retained.");
                     }
                 }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                WriteLine(LOG_IDENT, "Diagnostic retention could not finish; startup continues.");
             }
         }
 
         private void WriteLine(string message)
         {
             string timestamp = DateTime.UtcNow.ToString("s") + "Z";
-            string outcon = $"{timestamp} {message}";
+            string outcon = $"{timestamp} {DiagnosticPrivacy.Redact(message)}";
             string outlog = outcon.Replace(Paths.UserProfile, "%UserProfile%", StringComparison.InvariantCultureIgnoreCase);
 
             Debug.WriteLine(outcon);
             WriteToLog(outlog);
 
-            History.Add(outlog);
+            lock (History) History.Add(outlog);
         }
 
         public void WriteLine(string identifier, string message) => WriteLine($"[{identifier}] {message}");
@@ -126,17 +133,27 @@
             Thread.CurrentThread.CurrentUICulture = Locale.CurrentCulture;
         }
 
-        private async void WriteToLog(string message)
+        private void WriteToLog(string message)
         {
-            if (!Initialized)
+            if (!Initialized || NoWriteMode)
                 return;
 
+            // Startup helpers can exit immediately, and the WPF dispatcher may
+            // already be stopping. Finish each serialized write before returning.
+            _semaphore.Wait();
             try
             {
-                await _semaphore.WaitAsync();
-                await _filestream!.WriteAsync(Encoding.UTF8.GetBytes($"{message}\r\n"));
-
-                _ = _filestream.FlushAsync();
+                if (!Initialized || NoWriteMode) return;
+                _filestream!.Write(Encoding.UTF8.GetBytes($"{message}\r\n"));
+                _filestream.Flush();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ObjectDisposedException)
+            {
+                // Losing diagnostic storage must not crash the app. History still
+                // retains the message for the exception window or a copied report.
+                NoWriteMode = true;
+                Initialized = false;
+                Debug.WriteLine($"Diagnostic log unavailable: {ex.GetType().Name}");
             }
             finally
             {

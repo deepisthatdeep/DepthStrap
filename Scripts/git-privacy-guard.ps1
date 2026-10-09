@@ -1,9 +1,22 @@
 param([ValidateSet('Commit','Message','Push')][string]$Mode, [string]$MessagePath)
 $ErrorActionPreference = 'Stop'
 function Read-Git([string[]]$Arguments) {
-    $result = @(& git @Arguments)
-    if ($LASTEXITCODE -ne 0) { throw 'Could not inspect Git data; privacy check stopped.' }
-    return $result
+    # Git emits UTF-8 paths. Native-pipeline decoding can use a different code
+    # page in a hidden/redirected hook, corrupting Unicode blob names.
+    $info = [Diagnostics.ProcessStartInfo]::new('git')
+    $info.UseShellExecute = $false; $info.CreateNoWindow = $true
+    $info.RedirectStandardOutput = $true; $info.RedirectStandardError = $true
+    $info.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    foreach ($argument in $Arguments) { $info.ArgumentList.Add($argument) }
+    $process = [Diagnostics.Process]::Start($info)
+    try {
+        $output = $process.StandardOutput.ReadToEndAsync(); $errors = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit(); $errors.GetAwaiter().GetResult() | Out-Null
+        if ($process.ExitCode -ne 0) { throw 'Could not inspect Git data; privacy check stopped.' }
+        $raw = $output.GetAwaiter().GetResult()
+        if ($raw.Length -eq 0) { return }
+        return ($raw.TrimEnd([char[]]"`r`n") -split '\r?\n')
+    } finally { $process.Dispose() }
 }
 function Check-Email([string]$Email, [bool]$Historical = $false) {
     # Older published roots use the generic Codex identity. It is not the owner's personal email.
@@ -25,7 +38,7 @@ function Check-Text([string]$Text) {
 }
 function Check-File([string]$Revision, [string]$Path) {
     Check-Text $Path
-    if ($Path -match '(^|/)(artifacts|Logs|Cache|Accounts|\.git|\.codex|\.agents|bin|obj)(/|$)|^Fonts/|^Bloxstrap/Integrations/Tools/|(^|/)(Settings|State|PlayerState|StudioState)\.json$|(^|/)\.env(?:\.|$)|\.(pdb|log|jsonl|user|suo|pfx|pem)$') {
+    if ($Path -match '(^|/)(artifacts|Logs|Cache|Accounts|Toolkit|DepthStrapToolkit|\.git|\.codex|\.agents|bin|obj)(/|$)|^Fonts/|^Bloxstrap/Integrations/Tools/|(^|/)(Settings|State|PlayerState|StudioState)\.json$|(^|/)\.env(?:\.|$)|\.(pdb|log|jsonl|user|suo|pfx|pem)$') {
         throw 'Blocked runtime data, local tools or a private file in Git. Keep application data and credentials outside source control.'
     }
     # Inspect the indexed/committed blob, including binary metadata, rather than an unstaged working file.

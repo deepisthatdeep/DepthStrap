@@ -54,8 +54,7 @@ namespace Bloxstrap.UI.Elements.Settings.Pages
         {
             var picker = new OpenFileDialog { Filter = "JSON settings|*.json|Text files|*.txt", CheckFileExists = true };
             if (picker.ShowDialog(Window.GetWindow(this)) != true) return;
-            if (new FileInfo(picker.FileName).Length > FastFlagImport.MaxJsonLength) throw new InvalidDataException("Import is larger than 16 MB.");
-            ApplyJson(File.ReadAllText(picker.FileName));
+            ApplyJson(FastFlagImport.ReadFile(picker.FileName));
         });
         private string Json() => JsonSerializer.Serialize(App.FastFlags.Prop, new JsonSerializerOptions { WriteIndented = true });
         private void Export_Click(object sender, RoutedEventArgs e) => Attempt(() =>

@@ -13,9 +13,9 @@ namespace Bloxstrap.UI.Elements.Dialogs
             InitializeComponent();
             SignInSuccessful = false;
 
-            if (Application.Current?.MainWindow != null)
+            if (Application.Current?.MainWindow is { IsVisible: true } owner)
             {
-                Owner = Application.Current.MainWindow;
+                Owner = owner;
                 WindowStartupLocation = WindowStartupLocation.CenterOwner;
             }
             else

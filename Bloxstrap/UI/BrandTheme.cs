@@ -9,6 +9,12 @@ namespace Bloxstrap.UI
     {
         public const string ArenaUri = "pack://application:,,,/DepthStrap;component/Resources/Brand/CrimsonContract.png";
         public const string IconUri = "pack://application:,,,/DepthStrap;component/DepthStrap.ico";
+        private static readonly Lazy<BitmapImage> ArenaImage = new(() =>
+        {
+            var image = new BitmapImage(new Uri(ArenaUri));
+            image.Freeze();
+            return image;
+        });
         public static IReadOnlyList<Theme> Choices { get; } = new[]
         {
             Theme.CrimsonContract, Theme.Dark, Theme.Light, Theme.Blue, Theme.Purple,
@@ -72,8 +78,35 @@ namespace Bloxstrap.UI
             resources["NormalDarkAndLightBackground"] = resources["CardBackgroundFillColorDefaultBrush"];
             resources["BrandNavigationBackground"] = resources["CardBackgroundFillColorSecondaryBrush"];
             resources["ApplicationBackground"] = arena
-                ? new ImageBrush(new BitmapImage(new Uri(ArenaUri))) { Stretch = Stretch.UniformToFill, AlignmentX = AlignmentX.Center, AlignmentY = AlignmentY.Bottom }
+                ? new ImageBrush(ArenaImage.Value) { Stretch = Stretch.UniformToFill, AlignmentX = AlignmentX.Center, AlignmentY = AlignmentY.Bottom }
                 : resources["ApplicationBackgroundBrush"];
+            if (arena)
+            {
+                var bounds = new RectangleGeometry(new Rect(0, 0, ArenaImage.Value.PixelWidth, ArenaImage.Value.PixelHeight));
+                var layers = new DrawingGroup();
+                layers.Children.Add(new GeometryDrawing(new ImageBrush(ArenaImage.Value), null, bounds));
+                layers.Children.Add(new GeometryDrawing(new SolidColorBrush(Color.FromArgb(185, 24, 13, 16)), null, bounds));
+                var popup = new DrawingBrush(layers) { Stretch = Stretch.UniformToFill };
+                popup.Freeze();
+                resources["PopupBackground"] = popup;
+            }
+            else resources["PopupBackground"] = resources["ApplicationBackgroundBrush"];
+        }
+
+        internal static void ApplyPopup(Window window)
+        {
+            Apply(Application.Current.Resources, App.Settings.Prop.Theme.GetFinal());
+            window.SetResourceReference(Window.BackgroundProperty, "PopupBackground");
+            window.SetResourceReference(Window.ForegroundProperty, "TextFillColorPrimaryBrush");
+            window.Icon = new BitmapImage(new Uri(IconUri));
+            FontManager.ApplySavedFont(window);
+        }
+
+        internal static System.Windows.Controls.Border PopupSurface(FrameworkElement content)
+        {
+            var surface = new System.Windows.Controls.Border { Child = content };
+            surface.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "PopupBackground");
+            return surface;
         }
     }
 }

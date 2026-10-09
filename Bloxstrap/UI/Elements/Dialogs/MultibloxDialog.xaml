@@ -11,12 +11,12 @@
         Height="300"
         MinWidth="380"
         MinHeight="280"
-        Background="{ui:ThemeResource ApplicationBackgroundBrush}"
+        Background="{DynamicResource PopupBackground}"
         ExtendsContentIntoTitleBar="True"
         WindowBackdropType="Mica"
         WindowStartupLocation="CenterOwner">
 
-    <Grid Background="{DynamicResource ApplicationBackground}">
+    <Grid Background="{DynamicResource PopupBackground}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />

@@ -1,4 +1,4 @@
-﻿<base:WpfUiWindow x:Class="Bloxstrap.UI.Elements.Dialogs.FlagProfilesDialog"
+<base:WpfUiWindow x:Class="Bloxstrap.UI.Elements.Dialogs.FlagProfilesDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -15,7 +15,7 @@
         Width="540"
         SizeToContent="Height"
         ResizeMode="NoResize"
-        Background="{ui:ThemeResource ApplicationBackgroundBrush}"
+        Background="{DynamicResource PopupBackground}"
         ExtendsContentIntoTitleBar="True"
         WindowStartupLocation="CenterScreen">
     
@@ -23,7 +23,7 @@
         <converters:RangeConverter x:Key="ValidationConverter" From="0" />
     </ui:UiWindow.Resources>
 
-    <Grid Background="{DynamicResource ApplicationBackground}">
+    <Grid Background="{DynamicResource PopupBackground}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />

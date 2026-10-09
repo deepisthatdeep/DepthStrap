@@ -1,4 +1,4 @@
-﻿using Bloxstrap.Resources;
+using Bloxstrap.Resources;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -51,7 +51,6 @@ namespace Bloxstrap.UI.Elements.Dialogs
         {
             InitializeComponent();
 
-            var vm = AdvancedSettingsDialog.SharedViewModel;
 
             var allValues = new ObservableCollection<CommonValueItem>();
             foreach (var item in BooleanValues) allValues.Add(item);
@@ -62,6 +61,14 @@ namespace Bloxstrap.UI.Elements.Dialogs
             CommonValuesView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(CommonValueItem.Group)));
 
             DataContext = this;
+            Tabs.SelectedIndex = 0;
+            FlagNameTextBox.TextChanged += (_, _) => UpdateConfirmation();
+            JsonTextBox.TextChanged += (_, _) => UpdateConfirmation();
+            // Keep confirmation current even if a style consumes the routed edit event.
+            FlagValueComboBox.AddHandler(System.Windows.Controls.Primitives.TextBoxBase.TextChangedEvent,
+                new RoutedEventHandler((_, _) => UpdateConfirmation()), handledEventsToo: true);
+            Tabs.SelectionChanged += (_, _) => UpdateConfirmation();
+            UpdateConfirmation();
         }
 
         private void ImportButton_Click(object sender, RoutedEventArgs e)
@@ -74,60 +81,55 @@ namespace Bloxstrap.UI.Elements.Dialogs
             if (dialog.ShowDialog() != true)
                 return;
 
-            JsonTextBox.Text = File.ReadAllText(dialog.FileName);
+            try { JsonTextBox.Text = Roblox.FastFlagImport.ReadFile(dialog.FileName); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            { Frontend.ShowMessageBox(ex.Message, MessageBoxImage.Error); }
+        }
+
+        internal bool ValidateInput()
+        {
+            ValidationMessage.Text = "";
+            try
+            {
+                if (Tabs.SelectedIndex == 0)
+                {
+                    string name = FlagNameTextBox.Text.Trim();
+                    string value = FlagValueComboBox.Text;
+                    Roblox.FastFlagImport.ValidateName(name);
+                    if (string.IsNullOrWhiteSpace(value)) throw new InvalidDataException("Enter a value.");
+                    if (value.Length > Roblox.FastFlagImport.MaxValueLength) throw new InvalidDataException("Value is too long.");
+                    FormattedName = name; FormattedValue = value;
+                }
+                else
+                {
+                    if (Roblox.FastFlagImport.ParseDetailed(JsonTextBox.Text).Flags.Count == 0)
+                        throw new InvalidDataException("No non-null flag values were found.");
+                    FormattedName = null; FormattedValue = null;
+                }
+                return true;
+            }
+            catch (Exception ex) when (ex is InvalidDataException or JsonException)
+            {
+                ValidationMessage.Text = ex.Message;
+                return false;
+            }
         }
 
         private void OKButton_Click(object sender, RoutedEventArgs e)
         {
-            int selectedIndex = Tabs.SelectedIndex;
-
-            if (selectedIndex == 0)
-            {
-                string name = FlagNameTextBox.Text.Trim();
-                string value = FlagValueComboBox.Text.Trim();
-                if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(value))
-                {
-                    FormattedName = name;
-                    FormattedValue = value;
-                    Result = MessageBoxResult.OK;
-                    DialogResult = true;
-                    Close();
-                    return;
-                }
-                else
-                {
-                    MessageBox.Show("Please fill in both Name and Value.");
-                    return;
-                }
-            }
-
-            FormattedName = null;
-            FormattedValue = null;
+            if (!ValidateInput()) return;
             Result = MessageBoxResult.OK;
             DialogResult = true;
             Close();
         }
 
-        private void FlagValueComboBox_Loaded(object sender, RoutedEventArgs e)
+        private void UpdateConfirmation()
         {
-            if (FlagValueComboBox.Template.FindName("PART_EditableTextBox", FlagValueComboBox) is TextBox tb)
-            {
-                tb.GotFocus += (_, _) =>
-                {
-                    if (tb.Text == "Enter or select a value")
-                        tb.Text = "";
-                };
-
-                tb.LostFocus += (_, _) =>
-                {
-                    if (string.IsNullOrWhiteSpace(tb.Text))
-                    {
-                        tb.Text = "Enter or select a value";
-                    }
-                };
-
-                tb.Text = "Enter or select a value";
-            }
+            if (ConfirmButton is null) return;
+            ValidationMessage.Text = "";
+            ConfirmButton.IsEnabled = Tabs.SelectedIndex == 0
+                ? !string.IsNullOrWhiteSpace(FlagNameTextBox.Text) && !string.IsNullOrWhiteSpace(FlagValueComboBox.Text)
+                : !string.IsNullOrWhiteSpace(JsonTextBox.Text);
         }
     }
 

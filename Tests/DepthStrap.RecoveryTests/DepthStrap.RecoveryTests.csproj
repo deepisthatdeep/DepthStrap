@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF>
+    <AssemblyName>DepthStrap.RecoveryTests</AssemblyName><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <StartupObject>RecoveryTestProgram</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Bloxstrap/Bloxstrap.csproj" />
+    <Resource Include="../../Bloxstrap/DepthStrap.ico" Link="DepthStrap.ico" />
+  </ItemGroup>
+</Project>

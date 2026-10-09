@@ -9,7 +9,7 @@ internal sealed class SystemPerformanceDialog : WpfUiWindow
 {
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,12,0,0) };
     private readonly TextBox _preview = new() { Text = "Driver-supported settings and current link speed will appear here.", IsReadOnly = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Height = 145, Margin = new Thickness(0,12,0,12) };
-    private readonly StackPanel _actions = new() { Orientation = Orientation.Horizontal };
+    private readonly WrapPanel _actions = new() { Orientation = Orientation.Horizontal };
     private bool _running;
     internal const string BalancedDescription = "Balanced: High performance Windows power plan. Disable supported adapter energy saving, keep RSS enabled and use automatic link-speed negotiation.";
     internal const string ExtremeDescription = "Extreme: Ultimate Performance Windows plan, 100% minimum/maximum CPU state, all cores unparked and performance energy preference on AC power where supported. Disable supported adapter interrupt moderation, flow control, packet coalescing, segmentation and checksum offloads. Use driver-reported maximum RSS queues and receive/transmit buffers; RSS CPU count stays within your available logical processors.";
@@ -22,6 +22,7 @@ internal sealed class SystemPerformanceDialog : WpfUiWindow
         Title = "DepthStrap — Windows & network performance";
         Width = 720; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        BrandTheme.ApplyPopup(this);
         var panel = new StackPanel { Margin = new Thickness(24) };
         void Text(string value, double size = 13) => panel.Children.Add(new TextBlock { Text = value, FontSize = size, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,12) });
         Text("Optional Windows & network optimization", 22);
@@ -47,7 +48,7 @@ internal sealed class SystemPerformanceDialog : WpfUiWindow
         _restart.Click += (_, _) => { if (SystemPerformanceTuning.ConfirmRestart()) Close(); };
         panel.Children.Add(_restart);
         MaxHeight = SystemParameters.WorkArea.Height - 40;
-        Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Content = BrandTheme.PopupSurface(new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         Loaded += async (_, _) =>
         {
             _preview.Text = "Checking active physical adapters and driver-supported limits…";

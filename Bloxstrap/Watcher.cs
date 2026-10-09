@@ -257,7 +257,12 @@ namespace Bloxstrap
                 // Watch this client directly. A failed system-wide process enumeration
                 // must not be mistaken for its exit and disable the live monitor.
                 using var player = Process.GetProcessById(_watcherData.ProcessId);
-                await player.WaitForExitAsync(_cancellationTokenSource.Token);
+                using var lifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
+                var lifetime = _watcherData.LaunchMode == LaunchMode.Player
+                    ? PlayerWindowLifetime.MonitorAsync(player, lifetimeCancellation.Token) : Task.CompletedTask;
+                try { await player.WaitForExitAsync(_cancellationTokenSource.Token); }
+                finally { lifetimeCancellation.Cancel(); await lifetime; }
+                App.Logger.WriteLine("Watcher::Run", "Watched Roblox process exited.");
             }
             catch (ArgumentException)
             {

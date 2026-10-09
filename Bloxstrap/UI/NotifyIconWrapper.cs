@@ -145,12 +145,12 @@ namespace Bloxstrap.UI
 
             string? serverLocation = "";
             if (locationActive)
-                serverLocation = await _activityWatcher.Data.QueryServerLocation();
+                serverLocation = await _activityWatcher.Data.QueryServerLocation(showErrors: false);
 
             string? serverUptime = "";
             if (uptimeActive)
             {
-                DateTime? serverTime = await _activityWatcher.Data.QueryServerTime();
+                DateTime? serverTime = await _activityWatcher.Data.QueryServerTime(showErrors: false);
                 TimeSpan _serverUptime = DateTime.UtcNow - (serverTime ?? DateTime.UtcNow);
 
                 if (_serverUptime.TotalSeconds > 60)

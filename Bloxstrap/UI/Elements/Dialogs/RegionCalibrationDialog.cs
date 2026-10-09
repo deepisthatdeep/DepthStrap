@@ -12,7 +12,7 @@ namespace Bloxstrap.UI.Elements.Dialogs
         private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,16,0,16) };
         private readonly CheckBox _terms = new() { Content = "I accept Cloudflare's application terms and privacy policy.", Margin = new Thickness(0,12,0,12) };
         private readonly CancellationTokenSource _cts = new();
-        private readonly StackPanel _actions = new() { Orientation = Orientation.Horizontal };
+        private readonly WrapPanel _actions = new() { Orientation = Orientation.Horizontal };
         private bool _running;
         private readonly bool _reset;
         public RegionCalibrationDialog(bool reset = false)
@@ -21,6 +21,7 @@ namespace Bloxstrap.UI.Elements.Dialogs
             Title = reset ? "DepthStrap — Reset Network" : "DepthStrap — Network setup";
             Width = 610; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            BrandTheme.ApplyPopup(this);
             var panel = new StackPanel { Margin = new Thickness(24) };
             panel.Children.Add(new TextBlock { Text = reset ? "Reset Network" : "Normal routing vs Cloudflare WARP", FontSize = 22, FontWeight = FontWeights.SemiBold });
             panel.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,12,0,0),
@@ -51,7 +52,9 @@ namespace Bloxstrap.UI.Elements.Dialogs
             };
             direct.Click += async (_, _) => await RunAsync(false);
             _actions.Children.Add(start); _actions.Children.Add(direct); panel.Children.Add(_actions);
-            Content = panel;
+            MaxHeight = Math.Max(160, SystemParameters.WorkArea.Height - 40);
+            MaxWidth = Math.Max(240, SystemParameters.WorkArea.Width - 40);
+            Content = BrandTheme.PopupSurface(new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
             Closing += (_, e) => { if (_running) { e.Cancel = true; _cts.Cancel(); _status.Text = "Stopping setup; completing any required route restoration…"; } };
             Closed += (_, _) => _cts.Dispose();
         }

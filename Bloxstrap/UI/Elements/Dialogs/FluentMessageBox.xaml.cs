@@ -19,8 +19,9 @@ namespace Bloxstrap.UI.Elements.Dialogs
     public partial class FluentMessageBox
     {
         public MessageBoxResult Result = MessageBoxResult.None;
+        private readonly Dictionary<Button, MessageBoxResult> _buttonResults = new();
 
-        public FluentMessageBox(string message, MessageBoxImage image, MessageBoxButton buttons)
+        public FluentMessageBox(string message, MessageBoxImage image, MessageBoxButton buttons, MessageBoxResult defaultResult = MessageBoxResult.None)
         {
             InitializeComponent();
 
@@ -89,6 +90,19 @@ namespace Bloxstrap.UI.Elements.Dialogs
                     break;
             }
 
+            // Closing a confirmation is a negative decision, including callers
+            // which distinguish Cancel from No to preserve unsaved work.
+            Result = buttons switch
+            {
+                MessageBoxButton.YesNo => MessageBoxResult.No,
+                MessageBoxButton.OK => MessageBoxResult.OK,
+                _ => MessageBoxResult.Cancel
+            };
+            var defaultButton = _buttonResults.FirstOrDefault(pair => pair.Value == defaultResult).Key ?? ButtonOne;
+            defaultButton.IsDefault = true;
+            foreach (var pair in _buttonResults)
+                pair.Key.IsCancel = pair.Value == Result;
+
             // we're doing the width manually for this because ye
 
             if (ButtonThree.Visibility == Visibility.Visible)
@@ -140,6 +154,7 @@ namespace Bloxstrap.UI.Elements.Dialogs
 
         public void SetButton(Button button, MessageBoxResult result)
         {
+            _buttonResults[button] = result;
             button.Visibility = Visibility.Visible;
             button.Content = GetTextForResult(result);
             button.Click += (_, _) =>

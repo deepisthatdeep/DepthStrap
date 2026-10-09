@@ -70,7 +70,7 @@ namespace Bloxstrap.UI.Elements.Settings
 
             if (page != typeof(CompetitivePage) && page != typeof(RegionSelectorPage) &&
                 page != typeof(AdvancedRobloxSettingsPage) && page != typeof(DepthStrapSettingsPage) &&
-                page != typeof(AppearancePage) && page != typeof(FastFlagEditorPage))
+                page != typeof(AppearancePage) && page != typeof(FastFlagEditorPage) && page != typeof(AntiApiPage))
                 page = typeof(CompetitivePage);
 
             Navigate(page);

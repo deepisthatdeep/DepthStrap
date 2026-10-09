@@ -97,7 +97,20 @@ namespace Bloxstrap.Models
                 if (!File.Exists(FilePath))
                     return null;
 
-                return JsonSerializer.Deserialize<CompetitiveNetworkState>(AtomicFile.ReadText(FilePath), _options);
+                var state = JsonSerializer.Deserialize<CompetitiveNetworkState>(AtomicFile.ReadText(FilePath, maximumBytes: 64 * 1024), _options);
+                if (state is null) return null;
+                // Older or partially edited files may contain explicit JSON nulls;
+                // property initializers cover absent fields but not those nulls.
+                state.JobId ??= "";
+                state.Location = string.IsNullOrEmpty(state.Location) ? "Unknown" : state.Location;
+                state.RegionQuality = string.IsNullOrEmpty(state.RegionQuality) ? "Unknown" : state.RegionQuality;
+                state.UdmuxIp ??= "";
+                state.RccIp ??= "";
+                state.Warp = string.IsNullOrEmpty(state.Warp) ? "unknown" : state.Warp;
+                state.Colo ??= "";
+                state.RunLabel ??= "";
+                state.TracerouteFile ??= "";
+                return state;
             }
             catch
             {

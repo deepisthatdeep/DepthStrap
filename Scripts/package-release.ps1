@@ -1,4 +1,4 @@
-param([ValidatePattern('\A\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?\z')][string]$Version = '1.0.16')
+param([ValidatePattern('\A\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?\z')][string]$Version = '1.0.17')
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $artifactRoot = Join-Path $projectRoot 'artifacts'
@@ -13,7 +13,7 @@ foreach ($directory in @($packageRoot, $sourceRoot, $binaryRoot, $noticeRoot)) {
 
 function Copy-SourceFile([string]$RelativePath) {
     $RelativePath = $RelativePath.Replace('\', '/')
-    if ($RelativePath -match '(^|[\\/])(\.git|bin|obj|artifacts|Logs|Cache|Accounts)([\\/]|$)' -or
+    if ($RelativePath -match '(^|[\\/])(\.git|bin|obj|artifacts|Logs|Cache|Accounts|Toolkit|DepthStrapToolkit)([\\/]|$)' -or
         $RelativePath -match '\.(pdb|log|jsonl|user|suo)$' -or
         $RelativePath -like 'Bloxstrap/Integrations/Tools/*') { return }
     $from = [IO.Path]::GetFullPath((Join-Path $projectRoot $RelativePath))

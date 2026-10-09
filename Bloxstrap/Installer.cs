@@ -50,6 +50,17 @@ namespace Bloxstrap
 
             App.Logger.WriteLine(LOG_IDENT, "Beginning installation");
 
+            // Require acknowledgement before changing the installation. Implicit repair/update
+            // paths retain their unattended behavior; a fresh install includes this notice.
+            if (!IsImplicitInstall && Application.Current is not null)
+            {
+                var notice = new UI.Elements.Dialogs.ExecutorCompatibilityNotice();
+                var owner = Application.Current.Windows.OfType<Window>().FirstOrDefault(window => window.IsActive);
+                if (owner is not null) { notice.Owner = owner; notice.WindowStartupLocation = WindowStartupLocation.CenterOwner; }
+                if (notice.ShowDialog() != true)
+                    throw new OperationCanceledException("Installation requires acknowledging the compatibility notice.");
+            }
+
             // should've been created earlier from the write test anyway
             Directory.CreateDirectory(InstallLocation);
 
@@ -468,6 +479,11 @@ namespace Bloxstrap
                 if (Utilities.CompareVersions(currentVer, existingVer) == VersionComparison.LessThan &&
                     !ReleaseMigration.IsPrototypeToFirstRelease(existingProduct, existingVer, currentVer))
                 {
+                    if (isAutoUpgrade)
+                    {
+                        App.Logger.WriteLine(LOG_IDENT, "A newer app version is already installed; deferring this stale automatic update.");
+                        return;
+                    }
                     var result = Frontend.ShowMessageBox(
                         Strings.InstallChecker_VersionLessThanInstalled,
                         MessageBoxImage.Question,
@@ -496,39 +512,30 @@ namespace Bloxstrap
 
             Filesystem.AssertReadOnly(Paths.Application);
 
-            using (var ipl = new InterProcessLock("AutoUpdater", TimeSpan.FromSeconds(5)))
+            // Keep the updater lock through replacement and upgrade metadata writes.
+            using var updateLock = new InterProcessLock("AutoUpdater", TimeSpan.FromSeconds(30));
+            if (!updateLock.IsAcquired)
             {
-                if (!ipl.IsAcquired)
-                {
-                    App.Logger.WriteLine(LOG_IDENT, "Failed to update! (Could not obtain singleton mutex)");
-                    return;
-                }
+                App.Logger.WriteLine(LOG_IDENT, "App update deferred: another update still holds the lock.");
+                return;
             }
-
-            // prior to 2.8.0, auto-updating was handled with this... bruteforce method
-            // now it's handled with the system mutex you see above, but we need to keep this logic for <2.8.0 versions
-            for (int i = 1; i <= 10; i++)
+            // Another updater may have completed while this process waited for
+            // the lock. Re-read its installed version before replacing anything.
+            var lockedVersion = FileVersionInfo.GetVersionInfo(Paths.Application);
+            if (isAutoUpgrade && AppUpdater.ShouldDeferAutomaticReplacement(
+                lockedVersion.ProductName, lockedVersion.ProductVersion, currentVer))
             {
-                try
-                {
-                    AppUpdater.ReplaceExecutable(Paths.Process, Paths.Application);
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    if (i == 1)
-                    {
-                        App.Logger.WriteLine(LOG_IDENT, "Waiting for write permissions to update version");
-                    }
-                    else if (i == 10)
-                    {
-                        App.Logger.WriteLine(LOG_IDENT, "Failed to update! (Could not get write permissions after 10 tries/5 seconds)");
-                        App.Logger.WriteException(LOG_IDENT, ex);
-                        return;
-                    }
-
-                    Thread.Sleep(500);
-                }
+                App.Logger.WriteLine(LOG_IDENT, "A newer app version was installed while waiting; deferring this stale automatic update.");
+                return;
+            }
+            existingVer = lockedVersion.ProductVersion;
+            existingProduct = lockedVersion.ProductName;
+            try { AppUpdater.ReplaceExecutableWithRetries(Paths.Process, Paths.Application); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                App.Logger.WriteLine(LOG_IDENT, "App update deferred: the installed executable is still unavailable after bounded retries.");
+                App.Logger.WriteException(LOG_IDENT, ex);
+                return;
             }
 
             using (var uninstallKey = Registry.CurrentUser.CreateSubKey(App.UninstallKey))

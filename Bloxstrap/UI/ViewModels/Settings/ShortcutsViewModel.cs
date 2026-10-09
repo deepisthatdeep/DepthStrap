@@ -170,7 +170,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
             IsGameSearchLoading = true;
             try
             {
-                var results = await GameSearching.GetGameSearchResultsAsync(SearchQuery);
+                var results = await GameSearching.GetGameSearchResultsAsync(SearchQuery, token);
                 if (token.IsCancellationRequested || results == null) return;
 
                 var thumbRequests = results.Select(r => new ThumbnailRequest

@@ -7,7 +7,7 @@
     Title="Mod Information"
     Width="750" 
     SizeToContent="Height"
-    Background="{ui:ThemeResource ApplicationBackgroundBrush}"
+    Background="{DynamicResource PopupBackground}"
     ResizeMode="NoResize"
     ExtendsContentIntoTitleBar="True"
     WindowStartupLocation="CenterOwner">

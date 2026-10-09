@@ -28,18 +28,32 @@
                 <StackPanel Margin="0,8,0,0">
                     <TextBlock TextWrapping="Wrap" Text="Downgrade source: rdd.weao.gg (WEAO RDD). Its version catalog selects the previous Windows Player build. Packages come from Roblox deployment servers and are verified against the manifest. You can also select a retained build or paste a version ID. Roblox may reject older clients." />
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,2">
-                        <ui:Button Content="Downgrade from WEAO RDD" Command="{Binding DowngradePreviousCommand}" Padding="12,6" />
+                        <ui:Button Content="{Binding DowngradeLabel}" Command="{Binding DowngradePreviousCommand}" Padding="12,6" />
                         <ui:Button Content="Open rdd.weao.gg" Command="{Binding OpenDowngradeSourceCommand}" Margin="8,0,0,0" Padding="12,6" />
                         <ui:Button Content="Cancel lookup" Command="{Binding CancelLookupCommand}" Margin="8,0,0,0" Padding="12,6" />
                     </StackPanel>
+                    <TextBlock Text="{Binding ReleaseSummary}" TextWrapping="Wrap" Margin="0,8,0,0" />
                     <controls:OptionControl Header="Installed builds">
                         <ComboBox Width="260" IsEnabled="{Binding CanEditVersion}" ItemsSource="{Binding CachedVersions}" SelectedItem="{Binding SelectedCachedVersion, Mode=TwoWay}" />
                     </controls:OptionControl>
                     <controls:OptionControl Header="Current installed Roblox build" Description="Read from the Player installation state when this page opens or builds are refreshed.">
                         <TextBlock Text="{Binding InstalledBuild}" TextWrapping="Wrap" MaxWidth="300" />
                     </controls:OptionControl>
-                    <controls:OptionControl Header="Roblox build ID" Description="version- followed by 16 hexadecimal characters. This is the Roblox Player build, not the DepthStrap app version. Installation does not launch Roblox.">
-                        <TextBox Width="260" Padding="6,3" IsEnabled="{Binding CanEditVersion}" Text="{Binding VersionId, UpdateSourceTrigger=PropertyChanged}" />
+                    <controls:OptionControl Header="Roblox build hash or release number" Description="Enter version- followed by 16 hexadecimal characters, or a full release number such as 0.741.0.7411058. Release lookup requires an exact Windows Player match. Installation does not launch Roblox.">
+                        <StackPanel Width="300">
+                            <TextBox Tag="ReleaseNumberInput" Padding="6,3" IsEnabled="{Binding CanEditVersion}"
+                                     Text="{Binding VersionId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Popup Tag="ReleaseNumberPopup" IsOpen="{Binding SuggestionsOpen, Mode=TwoWay}" StaysOpen="False"
+                                   Placement="Bottom" PlacementTarget="{Binding RelativeSource={RelativeSource AncestorType=StackPanel}}"
+                                   AllowsTransparency="True">
+                                <Border Background="{DynamicResource PopupBackground}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4">
+                                    <ListBox Tag="ReleaseNumberOptions" Width="300" MaxHeight="240" ItemsSource="{Binding ReleaseSuggestions}"
+                                             SelectedItem="{Binding SelectedReleaseSuggestion, Mode=TwoWay}" />
+                                </Border>
+                            </Popup>
+                            <TextBlock Text="{Binding SuggestionStatus}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11" />
+                        </StackPanel>
                     </controls:OptionControl>
                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                         <ui:Button Content="Install / roll back" Command="{Binding InstallVersionCommand}" Padding="12,6" />

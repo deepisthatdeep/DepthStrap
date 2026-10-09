@@ -15,6 +15,7 @@ namespace Bloxstrap.UI.Elements.Settings.Pages
             DataContext = new BehaviourViewModel();
             InitializeComponent();
             VersionSettingsPanel.DataContext = new RobloxVersionArchiveViewModel { UpdatePolicyChanged = ((BehaviourViewModel)DataContext).RefreshUpdatePolicy };
+            Loaded += async (_, _) => await ((RobloxVersionArchiveViewModel)VersionSettingsPanel.DataContext).LoadReleaseLabelsAsync();
             Unloaded += (_, _) => ((RobloxVersionArchiveViewModel)VersionSettingsPanel.DataContext).CancelLookup();
 
             App.FrostRPC?.SetPage("Advanced Roblox Settings");

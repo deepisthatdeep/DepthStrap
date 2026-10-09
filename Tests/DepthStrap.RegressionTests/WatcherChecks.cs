@@ -13,6 +13,19 @@ internal static class WatcherChecks
 {
     internal static void Run(Action<bool, string> check)
     {
+        var lifetime = new PlayerWindowLifetime();
+        check(lifetime.Observe(TimeSpan.Zero, false) is null && lifetime.Observe(TimeSpan.FromMinutes(2), false) is null,
+            "Slow startup with no observed window cannot be mistaken for closing Roblox");
+        lifetime.Observe(TimeSpan.FromMinutes(2), true);
+        lifetime.Observe(TimeSpan.FromMinutes(3), false);
+        check(lifetime.Observe(TimeSpan.FromMinutes(3).Add(TimeSpan.FromSeconds(14)), false) is null,
+            "Short window transitions do not report a lingering process");
+        check(lifetime.Observe(TimeSpan.FromMinutes(3).Add(TimeSpan.FromSeconds(15)), false) is not null &&
+            lifetime.Observe(TimeSpan.FromMinutes(4), false) is null, "Sustained window disappearance reports once without requesting termination");
+        check(lifetime.Observe(TimeSpan.FromMinutes(4), true) is not null, "A returning window clears the lingering-process diagnosis");
+        lifetime.Observe(TimeSpan.FromMinutes(5), false); lifetime.Observe(TimeSpan.FromMinutes(6), null);
+        check(lifetime.Observe(TimeSpan.FromMinutes(6), false) is null,
+            "Failed window inspection resets the absence interval rather than assuming closure");
         string root = Path.Combine(Paths.Base, "startup-fixture");
         long startTime = DateTime.UtcNow.AddSeconds(2).Ticks;
         var workers = Enumerable.Range(0, 8).Select(_ =>
@@ -29,6 +42,15 @@ internal static class WatcherChecks
         }
         check(Directory.GetFiles(Path.Combine(root, "Logs"), "DepthStrap_*.log").Length == 8, "Eight simultaneous helper processes retain eight distinct logs without treating another helper as a duplicate launch");
 
+        foreach (string log in Directory.GetFiles(Path.Combine(root, "Logs"), "DepthStrap_*.log"))
+        {
+            string[] lines = File.ReadAllLines(log);
+            check(lines.Count(line => line.Contains("[LoggerExitFixture] entry-")) == 64 &&
+                Enumerable.Range(0, 64).All(i => lines.Count(line => line.Contains($"[LoggerExitFixture] entry-{i:D2}:")) == 1),
+                "Immediate helper exit retains every concurrent diagnostic entry exactly once");
+            check(lines.Last().EndsWith("terminal-entry-before-immediate-exit"),
+                "UI synchronization context cannot strand the final diagnostic entry at process exit");
+        }
         App.Settings.Prop = new Settings { CompetitiveModeEnabled = true, CompetitiveNetworkMonitorEnabled = true,
             CompetitiveCloudflareDetectionEnabled = false, CompetitiveIcmpEnabled = false, CompetitiveTracerouteEnabled = false,
             AdaptiveRegionPreferencesEnabled = false, ShowServerDetails = false, ShowServerUptime = false, AutoRejoin = false,
@@ -88,6 +110,20 @@ internal static class WatcherChecks
         viewModel.PollSession();
         check(viewModel.SessionLocation == "—", "A stale state file from a terminated client cannot appear as Current Session even when its watcher exited abruptly");
         CompetitiveNetworkState.ClearIfOwned(int.MaxValue);
+        File.WriteAllText(CompetitiveNetworkState.FilePath,
+            "{\"processId\":0,\"warp\":null,\"regionQuality\":null,\"location\":null,\"jobId\":null,\"colo\":null,\"udmuxIp\":null,\"rccIp\":null,\"runLabel\":null,\"tracerouteFile\":null}");
+        viewModel.PollSession();
+        check(viewModel.SessionWarp == "UNKNOWN" && viewModel.SessionLocation == "Unknown" &&
+            viewModel.SessionQuality == "Unknown" && viewModel.SessionJobId == "—" && viewModel.SessionTraceFile == "",
+            "Explicit null optional fields in an older or damaged watcher state cannot crash Current Session polling");
+        File.WriteAllText(CompetitiveNetworkState.FilePath, "{invalid json");
+        viewModel.PollSession();
+        check(viewModel.SessionLocation == "—" && viewModel.SessionWarp == "—",
+            "A corrupt watcher state clears displayed session fields instead of preserving old data");
+        CompetitiveNetworkState.Write(current with { ProcessId = 0 });
+        viewModel.PollSession();
+        check(viewModel.SessionLocation.Contains("London"), "Current Session recovers when the next valid watcher state arrives");
+        CompetitiveNetworkState.ClearIfOwned(0);
         check(ActivityWatcher.IsPlayerSessionLog("fixture_Player_123_last.log") && !ActivityWatcher.IsPlayerSessionLog("fixture_Player_CrashHandler_last.log"),
             "Crash-handler logs cannot be selected as the Player activity log");
         var launched = DateTime.Now.AddMinutes(-1);

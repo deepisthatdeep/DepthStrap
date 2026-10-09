@@ -1,4 +1,4 @@
-﻿using Bloxstrap.UI.Elements.Dialogs;
+using Bloxstrap.UI.Elements.Dialogs;
 using Bloxstrap.UI.Elements.Editor;
 using Bloxstrap.UI.Elements.Settings;
 using CommunityToolkit.Mvvm.Input;
@@ -81,7 +81,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Failed to load font: {ex.Message}", "Font Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        Frontend.ShowMessageBox($"Failed to load font: {ex.Message}", MessageBoxImage.Error);
                     }
                 }
             }
@@ -93,7 +93,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
                     UpdateFontVisibility();
                 }
                 catch (Exception ex)
-                { MessageBox.Show($"Failed to reset font: {ex.Message}", "Font Error", MessageBoxButton.OK, MessageBoxImage.Error); }
+                { Frontend.ShowMessageBox($"Failed to reset font: {ex.Message}", MessageBoxImage.Error); }
             }
         }
 

@@ -16,14 +16,14 @@ namespace Bloxstrap.UI.Elements.Dialogs
             Title = "DepthStrap — Rejoin Deepwoken"; Width = 390; SizeToContent = SizeToContent.Height;
             ShowActivated = false; ShowInTaskbar = false; Topmost = true;
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
-            Background = new SolidColorBrush(Color.FromRgb(30, 20, 21)); Foreground = Brushes.White;
+            BrandTheme.ApplyPopup(this);
             var panel = new StackPanel { Margin = new Thickness(20) };
             panel.Children.Add(new TextBlock { Text = "Returned to Roblox Home", FontSize = 18, FontWeight = FontWeights.SemiBold });
             var countdown = new TextBlock { Text = "Reopening Deepwoken in 10 seconds…", Margin = new Thickness(0, 12, 0, 16), TextWrapping = TextWrapping.Wrap };
             panel.Children.Add(countdown);
             var cancel = new Button { Content = "Stay on Home", Padding = new Thickness(12, 5, 12, 5) };
             cancel.Click += (_, _) => Close(); panel.Children.Add(cancel);
-            Content = new Border { BorderBrush = new SolidColorBrush(Color.FromRgb(210, 132, 116)), BorderThickness = new Thickness(1), Child = panel };
+            Content = BrandTheme.PopupSurface(new Border { BorderBrush = (Brush)Application.Current.Resources["SystemAccentColorBrush"], BorderThickness = new Thickness(1), Child = panel });
             Loaded += (_, _) => { var area = SystemParameters.WorkArea; Left = area.Right - ActualWidth - 20; Top = area.Bottom - ActualHeight - 20; _timer.Start(); };
             _timer.Tick += (_, _) =>
             {
