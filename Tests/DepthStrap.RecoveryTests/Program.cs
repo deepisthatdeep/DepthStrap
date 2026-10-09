@@ -21,7 +21,7 @@ internal static class RecoveryTestProgram
         {
             string executable = Path.GetFullPath(args[1]);
             var version = FileVersionInfo.GetVersionInfo(executable);
-            if (version.ProductName != "DepthStrap" || version.FileVersion != "1.0.17") throw new InvalidOperationException("Unexpected app package.");
+            if (version.ProductName != "DepthStrap" || version.FileVersion != Bloxstrap.App.Version) throw new InvalidOperationException("Unexpected app package.");
             Guid adapter = Guid.NewGuid();
             var apply = MacControls.HelperStartInfo(false, adapter, "02:11:22:33:44:55", executable);
             var restore = MacControls.HelperStartInfo(true, adapter, null, executable);

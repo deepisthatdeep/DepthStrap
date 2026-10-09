@@ -58,7 +58,8 @@ namespace Bloxstrap
 
         public static BuildMetadataAttribute BuildMetadata = Assembly.GetExecutingAssembly().GetCustomAttribute<BuildMetadataAttribute>()!;
 
-        public static string Version = Assembly.GetExecutingAssembly().GetName().Version!.ToString()[..^2];
+        private static readonly System.Version AssemblyVersion = Assembly.GetExecutingAssembly().GetName().Version!;
+        public static string Version = AssemblyVersion.ToString(AssemblyVersion.Build == 0 && AssemblyVersion.Revision == 0 ? 2 : 3);
 
         public static Bootstrapper? Bootstrapper { get; set; } = null!;
 

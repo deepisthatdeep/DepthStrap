@@ -32,6 +32,13 @@ internal static class AppUpdateChecks
             Size = bytes.Length, Digest = "sha256:" + Convert.ToHexString(SHA256.HashData(bytes)) } } };
         var plan = AppUpdater.SelectRelease(release, "1.0.11")!;
         check(plan is not null && plan.Version == new Version(1, 0, 12, 0), "Stable GitHub release selects a newer verified DepthStrap asset");
+        var renamedRelease = new GithubRelease { TagName = "v1.2.0", Assets = new() { new GithubReleaseAsset {
+            Name = "DepthStrap.exe", BrowserDownloadUrl = "https://github.com/deepisthatdeep/DepthStrap/releases/download/v1.2.0/DepthStrap.exe",
+            Size = bytes.Length, Digest = release.Assets![0].Digest } } };
+        check(AppUpdater.SelectRelease(renamedRelease, "1.0.17")?.Version == new Version(1, 2, 0, 0),
+            "Earlier 1.0.17 installations recognize the renamed 1.2 release");
+        check(AppUpdater.SelectRelease(renamedRelease, "1.2") is null && AppUpdater.SelectRelease(renamedRelease, "1.2.0") is null,
+            "The two-part app label and three-part release tag cannot trigger an update loop");
         check(AppUpdater.SelectRelease(release, "1.0.12.0") is null && AppUpdater.SelectRelease(release, "1.0.13") is null,
             "App updater treats three/four-part versions equally and never downgrades");
         release.Prerelease = true; check(AppUpdater.SelectRelease(release, "1.0.11") is null, "App updater rejects prereleases");
