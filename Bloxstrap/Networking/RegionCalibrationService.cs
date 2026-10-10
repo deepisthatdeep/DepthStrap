@@ -101,9 +101,9 @@ namespace Bloxstrap.Networking
                 string scores = run.Decision?.DirectScore is double d && run.Decision.WarpScore is double w
                     ? $"\nNormal: {d:0.0} ms score · WARP: {w:0.0} ms score · {run.Decision.MatchedTargets} matched routing locations. Scores include ICMP jitter/loss; these are not gameplay ping." : "";
                 string directCountry = run.DirectCountry.Length > 0 ? run.DirectCountry : original?.WarpActive == false ? original.Location : "";
-                var unprobed = CompetitiveRegionService.UnprobedLocations(targets.Select(x => x.City), directCountry);
-                string coverage = $"\n{targets.Select(x => (x.City, x.Country)).Distinct().Count()} routing locations discovered; {finalSamples.Select(x => x.City).Distinct().Count()} received usable replies on the selected route.";
-                if (unprobed.Count > 0) coverage += " No public probe address for: " + string.Join("; ", unprobed.Take(6)) + ". These locations can be learned from usable measurements after joining them.";
+                var unprobed = CompetitiveRegionService.UnprobedLocations(targets, directCountry);
+                string coverage = $"\nPublished addresses were discovered across {targets.Select(x => (x.City, x.Country)).Distinct().Count()} routing locations; {finalSamples.Select(x => (x.City, x.Country)).Distinct().Count()} produced usable replies on the selected route. Published addresses that do not reply remain unmeasured.";
+                if (unprobed.Count > 0) coverage += "\nThe public Roblox peering inventory has no address for: " + string.Join("; ", unprobed.Take(6)) + (unprobed.Count > 6 ? $" (and {unprobed.Count - 6} more)" : "") + ". These are separate from unresponsive probes. They remain untested by setup; usable measurements from actual Roblox joins can inform preferences later.";
                 var result = new NetworkTestResult
                 {
                     UnprobedRegions = unprobed,

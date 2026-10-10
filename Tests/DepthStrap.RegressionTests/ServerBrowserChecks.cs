@@ -136,6 +136,12 @@ internal static class ServerBrowserChecks
             var browser = new DepthStrapServerBrowser();
             var centers = await browser.GetDatacentersAsync(budget.Token);
             check(centers?.regions.Count > 0, "Live custom browser loads the public datacenter registry");
+            var entries = await browser.GetDatacenterEntriesAsync(budget.Token);
+            var activeLocations = entries!.Where(entry => !entry.Inactive && entry.DataCenterIds.Count > 0)
+                .Select(entry => (entry.Location.City, entry.Location.Country)).Distinct().ToList();
+            var uncovered = activeLocations.Where(location => !RoutingTargetDiscovery.CoversLocation(targets, location.City, location.Country)).ToList();
+            Console.WriteLine($"Live datacenter probe coverage: {activeLocations.Count - uncovered.Count}/{activeLocations.Count} active locations have a published peering address.");
+            Console.WriteLine("No address in the current peering inventory: " + string.Join("; ", uncovered.Select(location => $"{location.City}, {location.Country}")));
             var servers = await browser.FetchServerInstancesAsync(4111023553, cancellationToken: budget.Token);
             check(servers.Servers.Count > 0, "Live custom browser loads Deepwoken's public server list without an account cookie");
             Console.WriteLine($"Public network loading: {targets.Count} addresses across {targets.Select(x => (x.City, x.Country)).Distinct().Count()} locations; {centers!.Value.regions.Count} datacenter choices; {servers.Servers.Count} public Deepwoken servers.");

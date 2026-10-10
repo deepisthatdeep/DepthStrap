@@ -36,6 +36,22 @@ internal static class NetworkChecks
         .Select(i => new RoutingSample("192.0.2." + i, "Fixture " + i, "US", route, score + i, 0, loss)).ToList();
     public static void Run(Action<bool, string> check, string? verifiedPackage)
     {
+        var publishedLocations = new[] { new RoutingTarget("New York", "US", "192.0.2.10"),
+            new RoutingTarget("Queretaro", "MX", "192.0.2.11"), new RoutingTarget("São Paulo/SP", "BR", "192.0.2.12") };
+        check(RoutingTargetDiscovery.CoversLocation(publishedLocations, "New York City", "US"),
+            "A published New York probe is not falsely reported missing under New York City");
+        check(RoutingTargetDiscovery.CoversLocation(new[] { new RoutingTarget("Frankfurt", "DE", "192.0.2.13") }, "Frankfurt am Main", "DE"),
+            "A published Frankfurt probe covers the datacenter's official Frankfurt am Main name");
+        check(RoutingTargetDiscovery.CoversLocation(publishedLocations, "Santiago de Querétaro", "MX") &&
+            RoutingTargetDiscovery.CoversLocation(publishedLocations, "São Paulo", "BR"),
+            "Exact city naming variants and diacritics match the published inventory");
+        check(!RoutingTargetDiscovery.CoversLocation(publishedLocations, "New York City", "CA") &&
+            !RoutingTargetDiscovery.CoversLocation(publishedLocations, "Secaucus", "US") &&
+            !RoutingTargetDiscovery.CoversLocation(publishedLocations, "Columbus", "US"),
+            "Country and neighbouring-city differences cannot fabricate probe coverage");
+        check(!RoutingTargetDiscovery.CoversLocation(new[] { new RoutingTarget("Dallas", "US", "192.0.2.14") }, "Santiago de Querétaro", "MX") &&
+            !RoutingTargetDiscovery.CoversLocation(new[] { new RoutingTarget("Seattle", "US", "192.0.2.15") }, "Boardman", "US"),
+            "Nearby peering locations cannot stand in for unpublished Mexico or Oregon probes");
         check(NetworkComparison.Decide(Samples("direct", 60), Samples("warp:FIXTURE", 20)).UseWarp == true, "WARP needs meaningful improvement across matching targets");
         check(NetworkComparison.Decide(Samples("direct", 20), Samples("warp:FIXTURE", 60)).UseWarp == false, "Slower WARP selects normal routing");
         check(NetworkComparison.Decide(Samples("direct", 20), Samples("warp:FIXTURE", 18)).UseWarp == false, "Small timing differences do not enable WARP");

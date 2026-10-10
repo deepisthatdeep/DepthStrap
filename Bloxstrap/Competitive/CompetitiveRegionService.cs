@@ -260,11 +260,11 @@ namespace Bloxstrap.Competitive
             App.Logger.WriteLine(LOG_IDENT, $"Region registry loaded: {records.Count} locations, {map.Count} datacenter ids");
         }
 
-        internal static List<string> UnprobedLocations(IEnumerable<string> cities, string playerCountry)
+        internal static List<string> UnprobedLocations(IEnumerable<Networking.RoutingTarget> targets, string playerCountry)
         {
-            var present = cities.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var published = targets.ToList();
             lock (_registryLock)
-                return (_records ?? new List<DatacenterRecord>()).Where(x => !present.Contains(x.City) &&
+                return (_records ?? new List<DatacenterRecord>()).Where(x => !Networking.RoutingTargetDiscovery.CoversLocation(published, x.City, x.CountryCode) &&
                     (Networking.RegionGeography.IsNorthAmerica(playerCountry) ? Networking.RegionGeography.IsNorthAmerica(x.CountryCode) :
                      Networking.RegionGeography.IsEurope(playerCountry) ? Networking.RegionGeography.IsEurope(x.CountryCode) :
                      x.CountryCode.Equals(playerCountry, StringComparison.OrdinalIgnoreCase)))

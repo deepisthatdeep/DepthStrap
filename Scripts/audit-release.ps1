@@ -1,6 +1,6 @@
 #requires -Version 7.4
 param(
-    [string]$Version='1.2',
+    [string]$Version='1.2.1',
     [string]$DotNet='dotnet',
     [string]$PowerShell7=(Get-Command pwsh -ErrorAction Stop).Source
 )
@@ -50,7 +50,10 @@ try{
     }
     Step 'Socket binding fixtures' {Native $DotNet @($recovery,'--socket')}
     Step 'Read-only actual adapter inventory' {Native $DotNet @($recovery,'--inspect')}
-    Step 'Live public network loading' {Native $DotNet @($regression,(Join-Path $report 'network.png'),'--public-network-only')}
+    Step 'Live public network loading' {
+        Native $DotNet @($regression,(Join-Path $report 'network.png'),'--public-network-only')
+        Native $DotNet @($regression,'--probe-coverage-audit',(Join-Path $report 'probe-coverage'))
+    }
     Step 'Actual current and downgrade package verification' {Native $DotNet @($regression,'--live-version-audit',(Join-Path $report 'player-packages'))}
     Step 'Public build boundaries' {Script 'Scripts/verify-public-toolkit-boundary.ps1' @('-DotNet',$DotNet)}
     Step 'Public package boundaries' {Script 'Scripts/verify-toolkit-package-boundary.ps1'}

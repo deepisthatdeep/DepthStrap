@@ -6,6 +6,29 @@ namespace Bloxstrap.Networking
     internal sealed record RoutingTarget(string City, string Country, string Address);
     internal static class RoutingTargetDiscovery
     {
+        // Compare city names across the peering and datacenter inventories without
+        // treating neighbouring cities, state aliases or countries as one location.
+        internal static bool CoversLocation(IEnumerable<RoutingTarget> targets, string city, string country) =>
+            targets.Any(target => target.Country.Trim().Equals(country.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                CityKey(target.City) == CityKey(city));
+
+        private static string CityKey(string city)
+        {
+            string normalized = city.Trim().Normalize(System.Text.NormalizationForm.FormD);
+            string key = string.Concat(normalized.Where(character =>
+                System.Globalization.CharUnicodeInfo.GetUnicodeCategory(character) != System.Globalization.UnicodeCategory.NonSpacingMark))
+                .Normalize(System.Text.NormalizationForm.FormC).ToLowerInvariant();
+            key = Regex.Replace(key, @"\s+", " ");
+            return key switch
+            {
+                "new york city" or "nyc" => "new york",
+                "frankfurt am main" => "frankfurt",
+                "santiago de queretaro" => "queretaro",
+                "sao paulo/sp" => "sao paulo",
+                _ => key
+            };
+        }
+
         internal static List<RoutingTarget> Parse(string linksJson, string exchangesJson)
         {
             using var links = JsonDocument.Parse(linksJson);

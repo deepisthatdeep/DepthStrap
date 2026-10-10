@@ -39,6 +39,10 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Length == 2 && args[0] == "--probe-coverage-audit")
+        {
+            ProbeCoverageAudit.RunAsync(args[1]).GetAwaiter().GetResult(); return;
+        }
         if (args.Length == 2 && args[0] == "--live-version-audit")
         {
             LiveVersionChecks.RunAsync(args[1]).GetAwaiter().GetResult(); return;
