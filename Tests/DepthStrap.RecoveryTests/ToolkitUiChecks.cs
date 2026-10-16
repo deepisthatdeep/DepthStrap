@@ -245,19 +245,18 @@ internal static class ToolkitUiChecks
         }
         try
         {
-            Check(!fullButtons[2].IsEnabled, "Complete uninstall starts disabled");
-            FullClick(1);
-            Check(!fullButtons[2].IsEnabled && File.Exists(retained) && File.Exists(Path.Combine(uninstallRoot, "Settings.json")), "Creating the real uninstall preview changes no synthetic files");
-            phrase.Text = "  reset roblox  ";
-            Check(!fullButtons[2].IsEnabled, "Typed confirmation alone cannot authorize an all-user uninstall");
+            Check(fullButtons.Length == 2 && !fullButtons.Any(button => button.Content.ToString()!.Contains("preview", StringComparison.OrdinalIgnoreCase)), "Complete wipe has no create/save-preview action");
+            Check(!fullButtons[1].IsEnabled && File.Exists(retained) && File.Exists(Path.Combine(uninstallRoot, "Settings.json")), "Opening Complete wipe changes no synthetic files");
+            phrase.Text = "  wipe roblox  ";
+            Check(!fullButtons[1].IsEnabled, "Typed confirmation alone cannot authorize an all-user uninstall");
             consent.IsChecked = true;
-            Check(fullButtons[2].IsEnabled, "Both explicit confirmations enable the reviewed uninstall");
-            Render(fullWindow, Path.Combine(reports, "complete-uninstall-preview.png"));
-            FullClick(2);
+            Check(fullButtons[1].IsEnabled, "Confirmation enables Complete wipe without a separate scan or preview");
+            Render(fullWindow, Path.Combine(reports, "complete-wipe-confirmation.png"));
+            FullClick(1);
             Check(File.Exists(retained) && !File.Exists(Path.Combine(uninstallRoot, "Settings.json")) && storeFixture.Removals == 1, "The actual complete-uninstall UI preserves only the exact original fixture executable");
             using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(mergedRegistryPath)) Check(key is null, "The same real confirmation click deletes the previewed synthetic registry tree");
             using (var cookies = new BrowserCookieDatabase(browserPath, false)) Check(cookies.Count(false) == 0 && cookies.Scalar("SELECT count(*) FROM cookies;") == 3, "The same real confirmation click clears Roblox browser cookies while preserving other sites");
-            Check(!fullButtons[2].IsEnabled && phrase.Text == "" && consent.IsChecked == false, "A completed uninstall clears confirmation and cannot replay the old preview");
+            Check(!fullButtons[1].IsEnabled && phrase.Text == "" && consent.IsChecked == false, "A completed wipe clears confirmation and cannot be replayed");
             var cancelClose = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
             cancelClose.Tick += (_, _) =>
             {
@@ -270,9 +269,35 @@ internal static class ToolkitUiChecks
             };
             cancelClose.Start(); try { FullClick(0); } finally { cancelClose.Stop(); }
             Check(processCloses == 0, "Cancelling the remaining-process prompt closes no processes");
-            Render(fullWindow, Path.Combine(reports, "complete-uninstall-result.png"));
+            Render(fullWindow, Path.Combine(reports, "complete-wipe-result.png"));
         }
         finally { fullWindow.Close(); Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(mergedRegistryPath, false); }
+        int failedFactories = 0;
+        var failedWipe = new CompleteUninstallWindow(() => { failedFactories++; throw new IOException("Synthetic offline hive failure: profile 87, application 5. No wipe was started."); }, () => [], (_, _) => throw new InvalidOperationException("No process closure is allowed in this fixture."));
+        failedWipe.Owner = window; failedWipe.Show(); Pump();
+        try
+        {
+            var body = (StackPanel)((ScrollViewer)failedWipe.Content).Content;
+            var approve = body.Children.OfType<System.Windows.Controls.CheckBox>().Single();
+            var entry = body.Children.OfType<System.Windows.Controls.TextBox>().Single(box => !box.IsReadOnly);
+            var wipe = body.Children.OfType<System.Windows.Controls.Button>().Last();
+            approve.IsChecked = true; entry.Text = "WIPE ROBLOX";
+            wipe.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            var first = failedWipe.ActionTask;
+            failedWipe.Close();
+            Check(failedWipe.IsVisible, "Closing the wipe window is blocked while its destructive action is queued");
+            wipe.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Check(ReferenceEquals(first, failedWipe.ActionTask), "A duplicate click cannot queue another wipe or replace the active action task");
+            Pump();
+            while (!failedWipe.ActionTask.IsCompleted) Settle();
+            failedWipe.ActionTask.GetAwaiter().GetResult();
+            Check(failedFactories == 1 && body.Children.OfType<System.Windows.Controls.TextBox>().Single(box => box.IsReadOnly).Text.Contains("profile 87"), "A hive-loading failure reaches the result area without starting deletion");
+            Check(!wipe.IsEnabled && entry.Text == "" && approve.IsChecked == false, "Factory failures consume consent and cannot silently retry a destructive operation");
+            approve.IsChecked = true; entry.Text = "wipe roblox";
+            Check(wipe.IsEnabled, "After resolving a failure the one-action wipe can be explicitly confirmed again");
+            Render(failedWipe, Path.Combine(reports, "complete-wipe-hive-error.png"));
+        }
+        finally { failedWipe.Close(); }
         string handoffRoot = Path.Combine(Paths.Base, "handoff", "DepthStrap"); Directory.CreateDirectory(handoffRoot);
         string handoffExecutable = Path.Combine(handoffRoot, "DepthStrap.exe");
         File.Copy(Path.Combine(AppContext.BaseDirectory, "DepthStrap.exe"), handoffExecutable);

@@ -1,4 +1,4 @@
-param([string]$Version='1.2.2')
+param([string]$Version='1.2.3')
 $ErrorActionPreference='Stop'
 $privateEmails = @(& git log depthstrap/main --format='%ae%n%ce' | Where-Object { $_ -match '@yahoo\.|@hotmail\.|@outlook\.' } | Sort-Object -Unique)
 $needles = @($env:USERNAME, $env:USERPROFILE, $env:USERPROFILE.Replace('\','/')) + $privateEmails

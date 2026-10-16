@@ -179,7 +179,7 @@ internal static class RobloxWipeCatalog
         return result.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
     private static IEnumerable<string> FindProjects(string root, CancellationToken token, List<string> skipped)
-        => Walk(root, token, skipped).Where(IsProject);
+        => Walk(root, token, skipped, root).Where(IsProject);
     internal static IEnumerable<string> FindShortcuts(string root, CancellationToken token, List<string> skipped)
     {
         foreach (string file in Walk(root, token, skipped).Where(path => Path.GetExtension(path).Equals(".lnk", StringComparison.OrdinalIgnoreCase)))
@@ -192,7 +192,7 @@ internal static class RobloxWipeCatalog
             if (CommandExecutable(target is null ? null : '"' + target + '"') is not null) yield return file;
         }
     }
-    private static IEnumerable<string> Walk(string root, CancellationToken token, List<string> skipped)
+    private static IEnumerable<string> Walk(string root, CancellationToken token, List<string> skipped, string? profile = null)
     {
         if (!Directory.Exists(root)) yield break;
         var pending = new Stack<string>(); pending.Push(root); int entries = 0;
@@ -205,7 +205,13 @@ internal static class RobloxWipeCatalog
                 token.ThrowIfCancellationRequested();
                 if (++entries > 500000) throw new IOException("Project/shortcut discovery exceeded its entry limit. No wipe was started.");
                 var attributes = File.GetAttributes(child);
-                if ((attributes & FileAttributes.ReparsePoint) != 0) { skipped.Add("Redirected entry: " + child); continue; }
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    // Standard compatibility junctions duplicate locations already
+                    // covered by their real profile paths. Never traverse a link.
+                    if (profile is not null && IsCompatibilityAlias(child, profile)) continue;
+                    skipped.Add("Redirected entry: " + child); continue;
+                }
                 if ((attributes & FileAttributes.Directory) != 0)
                 {
                     // Roblox's AppData is already in the owned data roots. Do not
@@ -215,6 +221,34 @@ internal static class RobloxWipeCatalog
                 else yield return child;
             }
         }
+    }
+    internal static bool IsCompatibilityAlias(string path, string profile)
+    {
+        string relative = Path.GetRelativePath(profile, path);
+        string? expected = relative.ToLowerInvariant() switch
+        {
+            "application data" => @"AppData\Roaming",
+            "local settings" => @"AppData\Local",
+            "my documents" => "Documents",
+            "cookies" => @"AppData\Local\Microsoft\Windows\INetCookies",
+            "nethood" => @"AppData\Roaming\Microsoft\Windows\Network Shortcuts",
+            "printhood" => @"AppData\Roaming\Microsoft\Windows\Printer Shortcuts",
+            "recent" => @"AppData\Roaming\Microsoft\Windows\Recent",
+            "sendto" => @"AppData\Roaming\Microsoft\Windows\SendTo",
+            "start menu" => @"AppData\Roaming\Microsoft\Windows\Start Menu",
+            "templates" => @"AppData\Roaming\Microsoft\Windows\Templates",
+            @"documents\my music" => "Music",
+            @"documents\my pictures" => "Pictures",
+            @"documents\my videos" => "Videos",
+            _ => null
+        };
+        if (expected is null) return false;
+        string? target = new DirectoryInfo(path).LinkTarget;
+        if (target is null) return false;
+        if (target.StartsWith(@"\??\", StringComparison.Ordinal)) target = target[4..];
+        target = CookieReset.NormalizeFinalPath(target);
+        return Path.GetFullPath(target, Path.GetDirectoryName(path)!).TrimEnd(Path.DirectorySeparatorChar)
+            .Equals(Path.GetFullPath(Path.Combine(profile, expected)).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
     }
     internal static bool IsRedirected(string path) => (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
 }

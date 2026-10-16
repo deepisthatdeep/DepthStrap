@@ -65,28 +65,42 @@ internal sealed class RobloxWipeRegistryScope : IDisposable
         // sharing rights. Recheck it after load before exposing any registry key.
         using var existing = HiveFile(file);
         if (!GetFileInformationByHandle(existing, out var before)) throw new IOException("The offline hive identity is unavailable.");
-        // Prefer the handle-only loader: it avoids global HKU mount names and
-        // automatically unloads when the last handle closes. The legacy global
-        // loader can fail even with elevation on supported Windows setups.
-        int applicationStatus = RegLoadAppKey(file, out var applicationHandle, 0xf003f, 1, 0);
-        if (applicationStatus == 0)
+        // RegLoadAppKey requires one security descriptor throughout the hive.
+        // Normal NTUSER/UsrClass hives can contain mixed ACLs. Elevated wipes
+        // therefore use Windows' profile loader first, with its required privileges.
+        Root LoadApplication()
         {
+            int status = RegLoadAppKey(file, out var applicationHandle, 0x3001f, 1, 0); // READ | WRITE | DELETE; no ACL/owner changes.
+            if (status != 0) { applicationHandle.Dispose(); throw new Win32Exception(status); }
             try { ValidateHiveFile(file, existing, before); }
             catch { applicationHandle.Dispose(); throw; }
             var applicationKey = RegistryKey.FromHandle(applicationHandle);
             _applicationHives.Add(applicationKey);
-            Roots.Add(new(applicationKey, "Profile " + label + " (offline)", classes, RegistryView.Default));
-            return;
+            return new(applicationKey, "Profile " + label + " (offline)", classes, RegistryView.Default);
         }
-        applicationHandle.Dispose();
-        if (_privileges.Count == 0) { _privileges.Add(new("SeBackupPrivilege")); _privileges.Add(new("SeRestorePrivilege")); }
-        string mount = "DepthStrapWipe-" + Guid.NewGuid().ToString("N");
-        int status = RegLoadKey(new IntPtr(unchecked((int)0x80000003)), mount, file);
-        if (status != 0) throw new IOException("An offline Windows profile hive could not be opened (handle loader " + applicationStatus + ", global loader " + status + "). No deletion was started.", new Win32Exception(status));
-        _mounts.Add(mount);
-        ValidateHiveFile(file, existing, before);
-        var root = Registry.Users.OpenSubKey(mount, writable: true) ?? throw new IOException("The temporary profile hive is unavailable.");
-        Roots.Add(new(root, "HKU\\" + label + " (offline)", classes, RegistryView.Default));
+        Root LoadProfile()
+        {
+            if (_privileges.Count == 0)
+            {
+                var backup = new Privilege("SeBackupPrivilege");
+                try { var restore = new Privilege("SeRestorePrivilege"); _privileges.Add(backup); _privileges.Add(restore); }
+                catch { backup.Dispose(); throw; }
+            }
+            string mount = "DepthStrapWipe-" + Guid.NewGuid().ToString("N");
+            int status = RegLoadKey(new IntPtr(unchecked((int)0x80000003)), mount, file);
+            if (status != 0) throw new Win32Exception(status);
+            _mounts.Add(mount);
+            ValidateHiveFile(file, existing, before);
+            var key = Registry.Users.OpenSubKey(mount, writable: true) ?? throw new IOException("The temporary profile hive is unavailable.");
+            return new(key, "HKU\\" + label + " (offline)", classes, RegistryView.Default);
+        }
+        Root? Reloaded()
+        {
+            var key = Registry.Users.OpenSubKey(sid, writable: true);
+            return key is null ? null : new(key, "HKU\\" + label, classes, RegistryView.Default);
+        }
+        Roots.Add(OfflineHiveLoading.Open(WindowsMacBackend.IsAdministrator(), Reloaded, LoadProfile, LoadApplication,
+            (classes ? "the classes hive" : "the user registry hive") + " for " + label + " (" + Path.GetFileName(file) + ")"));
     }
     private static SafeFileHandle HiveFile(string file)
     {

@@ -132,6 +132,7 @@ internal static class SelfTests
         RobloxSignInResetTests.Run(root, Check);
         RobloxFullResetTests.Run(root, Check);
         CompleteUninstallTests.Run(root, Check);
+        OfflineHiveLoadingTests.Run(Check);
         BrowserCookieResetTests.Run(root, Check);
         var inventory = WindowsMacBackend.StartInfo("Inventory", Guid.Empty, null);
         Check(!inventory.UseShellExecute && inventory.Verb == "" && inventory.RedirectStandardOutput && inventory.ArgumentList.Contains("-EncodedCommand"), "Driver inventory is non-elevated and uses the embedded script");

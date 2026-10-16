@@ -1,4 +1,6 @@
 using Microsoft.Win32;
+using System.Security.AccessControl;
+using System.Security.Principal;
 
 namespace DepthStrap.Recovery;
 
@@ -29,6 +31,17 @@ internal static class RobloxRegistryResetTests
             using (var preserved = Registry.CurrentUser.OpenSubKey(sibling)) check((string?)preserved?.GetValue("keep") == "preserve", "Registry reset preserves sibling keys");
             reset.Execute(reset.Preview(), true);
             check(reset.Preview().Values == 0, "Registry reset remains idempotent");
+            using (var key = Registry.CurrentUser.CreateSubKey(fixture))
+            {
+                key.SetValue("deletable-without-acl-control", 1);
+                using var identity = WindowsIdentity.GetCurrent();
+                var security = key.GetAccessControl();
+                security.AddAccessRule(new RegistryAccessRule(identity.User!, RegistryRights.ChangePermissions | RegistryRights.TakeOwnership, AccessControlType.Deny));
+                key.SetAccessControl(security);
+                reset.Execute(reset.Preview(), true);
+            }
+            using (var removed = Registry.CurrentUser.OpenSubKey(fixture))
+                check(removed is null, "Registry reset deletes permitted data without asking to modify key ownership or ACLs");
             using (var key = Registry.CurrentUser.CreateSubKey(fixture)) key.SetValue("SymbolicLinkValue", "unexpected");
             Reject(() => reset.Preview(), "Link-shaped registry data is rejected");
         }

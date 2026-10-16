@@ -33,9 +33,9 @@ internal sealed class RecoveryWindow : Window
         var panel = new StackPanel { Margin = new Thickness(28) };
         void Text(string text, double size = 14) => panel.Children.Add(new TextBlock { Text = text, FontSize = size, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
         Text("DepthStrap Anti Api ( Beta )", 26);
-        Text("Complete reset requests administrator approval, then previews Roblox/Studio files, registry entries, DepthStrap data and Roblox browser cookies together. Close affected apps and browsers before confirming. MAC changes also require administrator approval and a supported driver.");
+        Text("Complete wipe requests administrator approval, then removes Roblox/Studio files, registry entries, DepthStrap data and Roblox browser cookies in one confirmed operation. Close affected apps and browsers before confirming. MAC changes also require administrator approval and a supported driver.");
         Text("Roblox reset and MAC address", 18);
-        AddAction("1. Complete Roblox reset — files, registry and browser cookies…", () => ResetAction(this, message => _output.Text = message));
+        AddAction("1. Complete wipe — uninstall Roblox, Studio and DepthStrap…", () => ResetAction(this, message => _output.Text = message));
         AddAction("2. Spoof MAC address…", () => MacAction(this));
         _actions.Children.Add(new TextBlock { Text = "Installation and device diagnostics", FontSize = 18, Margin = new Thickness(0, 12, 0, 12) });
         AddAction("Inspect adapters / MAC", () =>

@@ -88,7 +88,9 @@ internal sealed class RobloxRegistryReset
     }
     private SafeRegistryHandle? Open(string path, bool writable)
     {
-        int result = RegOpenKeyEx(_root, path, 8, (writable ? 0xf003fu : 0x20019u) | _view, out var key); // OPEN_LINK
+        // Read/enumerate, set values and delete; never request WRITE_DAC or
+        // WRITE_OWNER. A deletable key need not permit changing its security.
+        int result = RegOpenKeyEx(_root, path, 8, (writable ? 0x3001bu : 0x20019u) | _view, out var key); // OPEN_LINK
         if (result == 2) { key.Dispose(); return null; }
         if (result != 0) { key.Dispose(); throw new IOException("Roblox registry data is inaccessible."); }
         uint length = 0;

@@ -40,6 +40,17 @@ internal static class CompleteUninstallTests
             string project = Path.Combine(profile.Directory, "Documents", "MyProject.rbxlx"); File.WriteAllText(project, "synthetic-project"); projects.Add(project);
             File.WriteAllText(Path.Combine(profile.Directory, "Documents", "Keep.txt"), "unrelated");
         }
+        string duplicate = Path.Combine(profiles[0].Directory, "My Documents");
+        JunctionFixture.Create(fixture, duplicate, Path.Combine(profiles[0].Directory, "Documents"));
+        check(RobloxWipeCatalog.IsCompatibilityAlias(duplicate, profiles[0].Directory), "A genuine Windows My Documents compatibility junction is recognized by both its name and target");
+        var aliasCatalog = RobloxWipeCatalog.Files(profiles, [], original, true, CancellationToken.None);
+        check(aliasCatalog.Skipped.Length == 0 && aliasCatalog.Projects.Length == 2, "A standard duplicate profile junction cannot make a complete wipe permanently incomplete or duplicate its Studio projects");
+        string falseAlias = Path.Combine(profiles[1].Directory, "My Documents");
+        JunctionFixture.Create(fixture, falseAlias, Path.Combine(profiles[0].Directory, "Documents"));
+        check(!RobloxWipeCatalog.IsCompatibilityAlias(falseAlias, profiles[1].Directory)
+            && RobloxWipeCatalog.Files(profiles, [], original, true, CancellationToken.None).Skipped.Any(item => item.Contains(falseAlias)),
+            "A familiar junction name pointing to another profile remains unresolved and is never followed");
+        Directory.Delete(falseAlias); // Removes only this known fixture junction, never its target.
         string shared = Path.Combine(basis, "Shared", "Roblox"); Directory.CreateDirectory(shared); File.WriteAllText(Path.Combine(shared, "RobloxStudioBeta.exe"), "synthetic");
         Guid id = Guid.NewGuid(); string registryPath = @"Software\DepthStrapRecoveryLabFixtures\" + id;
         using var root = Registry.CurrentUser.CreateSubKey(registryPath);
@@ -99,6 +110,12 @@ internal static class CompleteUninstallTests
         using var failedService = new RobloxCompleteUninstall(() => [], () => [], () => new([partial], [], []), failureStore, () => false, null);
         var failedPreview = failedService.PreviewAsync().GetAwaiter().GetResult();
         check(!failedService.ExecuteAsync(failedPreview, true).GetAwaiter().GetResult().Complete && !Directory.Exists(partial), "A servicing failure after file deletion reports incomplete, never full success");
+        int catalogueCalls = 0;
+        using var newlyUnresolved = new RobloxCompleteUninstall(() => [], () => [],
+            () => new([], [], ++catalogueCalls >= 3 ? ["Synthetic location became redirected during removal"] : []), new Store(), () => false, null);
+        var unresolvedResult = newlyUnresolved.ExecuteAsync(newlyUnresolved.PreviewAsync().GetAwaiter().GetResult(), true).GetAwaiter().GetResult();
+        check(!unresolvedResult.Complete && unresolvedResult.Message.Contains("became redirected"),
+            "A newly unresolved location found during final verification prevents false complete-wipe success");
         var storeProfile = new RobloxWipeProfile("S-1-5-21-1-2-3-1003", Path.Combine(basis, "StoreUser"));
         string storeData = Path.Combine(storeProfile.Directory, "AppData", "Local", "Packages", "ROBLOXCORPORATION.ROBLOX_55nm5eh3cm0pr");
         Directory.CreateDirectory(storeData); string settings = Path.Combine(storeData, "settings.dat"); File.WriteAllText(settings, "locked-store-fixture");
