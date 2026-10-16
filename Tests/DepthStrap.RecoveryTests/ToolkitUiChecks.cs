@@ -292,6 +292,7 @@ internal static class ToolkitUiChecks
             while (!failedWipe.ActionTask.IsCompleted) Settle();
             failedWipe.ActionTask.GetAwaiter().GetResult();
             Check(failedFactories == 1 && body.Children.OfType<System.Windows.Controls.TextBox>().Single(box => box.IsReadOnly).Text.Contains("profile 87"), "A hive-loading failure reaches the result area without starting deletion");
+            Check(body.Children.OfType<TextBlock>().Last().Text.Contains("profile 87"), "The status beside the wipe action includes the actual failure instead of only a generic instruction");
             Check(!wipe.IsEnabled && entry.Text == "" && approve.IsChecked == false, "Factory failures consume consent and cannot silently retry a destructive operation");
             approve.IsChecked = true; entry.Text = "wipe roblox";
             Check(wipe.IsEnabled, "After resolving a failure the one-action wipe can be explicitly confirmed again");

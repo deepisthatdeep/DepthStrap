@@ -1,6 +1,6 @@
 #requires -Version 7.4
 param(
-    [string]$Version='1.2.3',
+    [string]$Version='1.2.4',
     [ValidateRange(1,3)][int]$AuditPass=1,
     [string]$DotNet='dotnet',
     [string]$PowerShell7=(Get-Command pwsh -ErrorAction Stop).Source
@@ -52,7 +52,10 @@ try{
         Native (Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe') @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File','Tests/DepthStrap.RecoveryTests/AdapterDriverFixture.ps1','-Source','Bloxstrap/Recovery/AdapterDriver.ps1')
     }
     Step 'Socket binding fixtures' {Native $DotNet @($recovery,'--socket')}
-    Step 'Read-only actual adapter inventory' {Native $DotNet @($recovery,'--inspect')}
+    Step 'Read-only actual device and profile discovery' {
+        Native $DotNet @($recovery,'--inspect')
+        Native $DotNet @($recovery,'--discovery-only')
+    }
     Step 'Live public network loading' {
         Native $DotNet @($regression,(Join-Path $report 'network.png'),'--public-network-only')
         Native $DotNet @($regression,'--probe-coverage-audit',(Join-Path $report 'probe-coverage'))

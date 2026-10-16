@@ -39,7 +39,12 @@ internal sealed class CompleteUninstallWindow : Window
             if (_busy) return;
             _busy = true; closeButton.IsEnabled = accept.IsEnabled = typed.IsEnabled = false; Update(); status.Text = "Working…";
             try { await action(); }
-            catch (Exception ex) when (ex is not OutOfMemoryException) { output.Visibility = Visibility.Visible; output.Text = ex.Message; status.Text = "Wipe could not finish. Resolve the reported issue, then confirm and retry."; }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                output.Visibility = Visibility.Visible; output.Text = ex.Message;
+                status.Text = "Wipe could not finish: " + ex.Message + "\nResolve this issue, then confirm and retry.";
+                _ = Dispatcher.InvokeAsync(() => status.BringIntoView(), System.Windows.Threading.DispatcherPriority.Loaded);
+            }
             finally { _busy = false; closeButton.IsEnabled = true; accept.IsEnabled = typed.IsEnabled = !_completed; Update(); }
         }
         void Bind(Button button, Func<Task> action) => button.Click += async (_, _) =>
@@ -73,7 +78,9 @@ internal sealed class CompleteUninstallWindow : Window
                 var result = await Task.Run(() => _service.ExecuteAsync(approved, true));
                 output.Text = result.Message + $"\nRemoved {result.RemovedFiles:N0} files and {result.RemovedDirectories:N0} folders.";
                 _completed = result.Complete;
-                status.Text = result.Complete ? "Complete wipe finished for the supported local scope. Close this window." : "Wipe incomplete. Resolve the reported issues, then confirm and retry.";
+                status.Text = result.Complete ? "Complete wipe finished for the supported local scope. Close this window."
+                    : "Wipe incomplete. " + result.Message + "\nResolve the reported issues, then confirm and retry.";
+                if (!result.Complete) _ = Dispatcher.InvokeAsync(() => status.BringIntoView(), System.Windows.Threading.DispatcherPriority.Loaded);
             }
             finally { _service?.Dispose(); _service = null; }
         });

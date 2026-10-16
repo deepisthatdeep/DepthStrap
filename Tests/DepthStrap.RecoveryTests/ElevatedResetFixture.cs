@@ -110,6 +110,8 @@ internal static class ElevatedResetFixture
         string player = Path.Combine(local, "Roblox"); Directory.CreateDirectory(player);
         File.WriteAllText(Path.Combine(player, "RobloxCookies.dat"), "synthetic client cookie");
         string documents = Path.Combine(profile.Directory, "Documents"); Directory.CreateDirectory(documents);
+        string reservedUnrelated = @"\\?\" + Path.Combine(profile.Directory, "nul");
+        File.WriteAllText(reservedUnrelated, "unrelated reserved-name fixture");
         string project = Path.Combine(documents, "SyntheticProject.rbxlx"), unrelatedFile = Path.Combine(documents, "Keep.txt");
         File.WriteAllText(project, "synthetic Studio creation"); File.WriteAllText(unrelatedFile, "unrelated fixture document");
         foreach (var root in mounted)
@@ -132,6 +134,7 @@ internal static class ElevatedResetFixture
         check(outcome.Complete, "The production combined wipe completes with native offline hives, an isolated machine registry tree and synthetic browser data: " + outcome.Message);
         check(File.Exists(original) && Directory.GetFiles(app, "*", SearchOption.AllDirectories).SequenceEqual(new[] { original }), "Combined elevated wipe keeps only the exact synthetic original executable");
         check(!Directory.Exists(player) && !File.Exists(project) && File.Exists(unrelatedFile), "Combined elevated wipe deletes synthetic client data and Studio creations while retaining unrelated documents");
+        check(File.ReadAllText(reservedUnrelated) == "unrelated reserved-name fixture", "The complete native wipe scans past a literal nul file without treating it as a device or deleting unrelated data");
         using var remainingCookies = new BrowserCookieDatabase(database, false);
         check(remainingCookies.Count(false) == 0 && remainingCookies.Scalar("SELECT count(*) FROM cookies WHERE host_key='example.org'") == 1,
             "Combined elevated wipe clears only Roblox cookies from the synthetic browser database");

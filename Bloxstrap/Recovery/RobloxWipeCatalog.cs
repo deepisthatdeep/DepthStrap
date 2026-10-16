@@ -184,9 +184,9 @@ internal static class RobloxWipeCatalog
     {
         foreach (string file in Walk(root, token, skipped).Where(path => Path.GetExtension(path).Equals(".lnk", StringComparison.OrdinalIgnoreCase)))
         {
-            if (new FileInfo(file).Length > 1024 * 1024) continue;
+            if (new FileInfo(CookieReset.NativePath(file)).Length > 1024 * 1024) continue;
             ShellLink.Shortcut shortcut;
-            try { shortcut = ShellLink.Shortcut.ReadFromFile(file); }
+            try { shortcut = ShellLink.Shortcut.ReadFromFile(CookieReset.NativePath(file)); }
             catch (Exception ex) when (ex is IOException or ArgumentException or IndexOutOfRangeException) { continue; }
             string? target = shortcut.LinkInfo?.LocalBasePathUnicode ?? shortcut.LinkInfo?.LocalBasePath;
             if (CommandExecutable(target is null ? null : '"' + target + '"') is not null) yield return file;
@@ -199,17 +199,24 @@ internal static class RobloxWipeCatalog
         while (pending.TryPop(out string? folder))
         {
             token.ThrowIfCancellationRequested();
-            if (IsRedirected(folder)) { skipped.Add("Redirected folder: " + folder); continue; }
-            foreach (string child in Directory.EnumerateFileSystemEntries(folder))
+            bool redirected;
+            try { redirected = IsRedirected(folder); }
+            catch (UnauthorizedAccessException) { skipped.Add("Inaccessible project/shortcut folder: " + CookieReset.NormalizeFinalPath(folder)); continue; }
+            if (redirected) { skipped.Add("Redirected folder: " + folder); continue; }
+            // Keep enumerated entries in the literal file namespace. Otherwise
+            // File.GetAttributes turns an ordinary on-disk "nul" into \\.\nul.
+            foreach (string child in DiscoverChildren(CookieReset.NativePath(folder), skipped))
             {
                 token.ThrowIfCancellationRequested();
-                if (++entries > 500000) throw new IOException("Project/shortcut discovery exceeded its entry limit. No wipe was started.");
-                var attributes = File.GetAttributes(child);
+                if (++entries > 2000000) throw new IOException("Project/shortcut discovery exceeded its two-million-entry safety limit. No wipe was started.");
+                FileAttributes attributes;
+                try { attributes = File.GetAttributes(child); }
+                catch (UnauthorizedAccessException) { skipped.Add("Inaccessible project/shortcut entry: " + CookieReset.NormalizeFinalPath(child)); continue; }
                 if ((attributes & FileAttributes.ReparsePoint) != 0)
                 {
                     // Standard compatibility junctions duplicate locations already
                     // covered by their real profile paths. Never traverse a link.
-                    if (profile is not null && IsCompatibilityAlias(child, profile)) continue;
+                    if (profile is not null && IsCompatibilityAlias(CookieReset.NormalizeFinalPath(child), profile)) continue;
                     skipped.Add("Redirected entry: " + child); continue;
                 }
                 if ((attributes & FileAttributes.Directory) != 0)
@@ -218,7 +225,24 @@ internal static class RobloxWipeCatalog
                     // inspect unrelated applications or traverse their profile data.
                     if (!Path.GetFileName(child).Equals("AppData", StringComparison.OrdinalIgnoreCase)) pending.Push(child);
                 }
-                else yield return child;
+                else yield return CookieReset.NormalizeFinalPath(child);
+            }
+        }
+    }
+    private static IEnumerable<string> DiscoverChildren(string folder, List<string> skipped)
+    {
+        IEnumerator<string> entries;
+        try { entries = Directory.EnumerateFileSystemEntries(folder).GetEnumerator(); }
+        catch (UnauthorizedAccessException) { skipped.Add("Inaccessible project/shortcut folder: " + CookieReset.NormalizeFinalPath(folder)); yield break; }
+        using (entries)
+        {
+            while (true)
+            {
+                bool moved;
+                try { moved = entries.MoveNext(); }
+                catch (UnauthorizedAccessException) { skipped.Add("Inaccessible project/shortcut folder: " + CookieReset.NormalizeFinalPath(folder)); yield break; }
+                if (!moved) yield break;
+                yield return entries.Current;
             }
         }
     }

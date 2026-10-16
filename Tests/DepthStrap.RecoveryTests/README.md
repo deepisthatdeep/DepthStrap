@@ -2,6 +2,8 @@
 
 These tests reference the actual DepthStrap application assembly. They create isolated synthetic file and registry fixtures and simulated adapters. They do not delete real Roblox data or change network hardware.
 
+Reserved-name fixtures reproduce the reported `\\.\nul` discovery crash, preserve unrelated literal `nul` files, exercise reserved-name Studio paths and verify that unreadable folders are reported as unresolved rather than silently certified clean. The optional `--discovery-only` mode scans the current user's real directory metadata without loading hives, reading cookies or creating a reset service. It prints counts only and is now included in full release audits to cover real profile layouts as well as fixtures.
+
 From the repository root:
 
 ```powershell

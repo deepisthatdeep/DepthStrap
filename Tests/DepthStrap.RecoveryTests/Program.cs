@@ -15,6 +15,16 @@ internal static class RecoveryTestProgram
             CompleteUninstallTests.LargeTree(root, (value, description) => { if (!value) throw new InvalidOperationException(description); Console.WriteLine("PASS: " + description); }); return;
         }
         if (args.Length == 2 && args[0] == "--ui") { ToolkitUiChecks.Run(args[1]); return; }
+        if (args.SequenceEqual(new[] { "--discovery-only" }))
+        {
+            // Real directory metadata only: never load a user hive, inspect
+            // browser-cookie contents, create a reset service or delete data.
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+            var profile = new RobloxWipeProfile("READONLY", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+            var catalog = RobloxWipeCatalog.Files([profile], [], null, true, timeout.Token);
+            Console.WriteLine($"PASS: read-only current-profile discovery; {catalog.Locations.Length} identified locations, {catalog.Projects.Length} Studio project/model paths, {catalog.Skipped.Length} unresolved locations reported. No filenames printed, data deleted or hives loaded.");
+            return;
+        }
         if (args.SequenceEqual(new[] { "--socket" })) { SocketPinSmoke.Run(); return; }
         if (args.SequenceEqual(new[] { "--inspect" }))
         {

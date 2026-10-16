@@ -132,6 +132,7 @@ internal static class SelfTests
         RobloxSignInResetTests.Run(root, Check);
         RobloxFullResetTests.Run(root, Check);
         CompleteUninstallTests.Run(root, Check);
+        ReservedNameScanTests.Run(root, Check);
         OfflineHiveLoadingTests.Run(Check);
         BrowserCookieResetTests.Run(root, Check);
         var inventory = WindowsMacBackend.StartInfo("Inventory", Guid.Empty, null);
