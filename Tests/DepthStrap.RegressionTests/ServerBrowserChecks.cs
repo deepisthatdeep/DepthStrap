@@ -106,6 +106,23 @@ internal static class ServerBrowserChecks
         Task.Run(() => viewModel.SearchCommand.ExecuteAsync(null)).GetAwaiter().GetResult();
         check(viewModel.Servers.Count == 0 && viewModel.NextCursor.Length == 0 && !viewModel.IsLoading, "A game change during a request cancels it and rejects late results");
         handler.OnRequest = null;
+        viewModel = new RegionSelectorViewModel(browser, uri => launched = uri) { UsePreferredRegionMode = false };
+        var chosenGame = new Bloxstrap.Models.APIs.Roblox.OmniSearchContent { RootPlaceId = 123, Name = "Deepwoken fixture" };
+        viewModel.SearchResults.Add(chosenGame);
+        var selectorPage = new Bloxstrap.UI.Elements.Settings.Pages.RegionSelectorPage(viewModel);
+        selectorPage.Measure(new System.Windows.Size(1100, 700)); selectorPage.Arrange(new System.Windows.Rect(0, 0, 1100, 700)); selectorPage.UpdateLayout();
+        var gamePicker = (System.Windows.Controls.ComboBox)selectorPage.FindName("SearchComboBox");
+        gamePicker.SelectedItem = chosenGame;
+        gamePicker.GetBindingExpression(System.Windows.Controls.Primitives.Selector.SelectedItemProperty)!.UpdateSource();
+        check(viewModel.SearchCommand.ExecutionTask is not null, "Selecting a game through the actual ComboBox starts its server search");
+        HistoryChecks.Wait(viewModel.SearchCommand.ExecutionTask!);
+        check(viewModel.SelectedSearchResult == chosenGame && viewModel.SearchQuery == chosenGame.Name && viewModel.PlaceId == "123" &&
+            viewModel.SearchResults.Contains(chosenGame) && viewModel.Servers.Count == 1,
+            "Selecting a game retains its visible name and selection while automatically loading its public servers");
+        var handoff = RegionSelectorViewModel.PlayerLaunchStartInfo("roblox://experiences/start?placeId=123&gameInstanceId=" + Job);
+        check(handoff.FileName == Paths.Application && !handoff.UseShellExecute && handoff.ArgumentList.Contains("-skipappupdate") &&
+            new LaunchSettings(handoff.ArgumentList.ToArray()).RobloxLaunchMode == Bloxstrap.Enums.LaunchMode.Player,
+            "ID Selector joins through this DepthStrap installation instead of a potentially replaced URI handler");
         viewModel.SearchQuery = "New game search";
         check(viewModel.PlaceId.Length == 0 && !viewModel.SearchCommand.CanExecute(null), "Typing another game name cannot search the previously selected game");
         viewModel.StopPendingRequests();
@@ -115,6 +132,10 @@ internal static class ServerBrowserChecks
         viewModel = new RegionSelectorViewModel(browser) { PlaceId = "123", UsePreferredRegionMode = true };
         Task.Run(() => viewModel.SearchCommand.ExecuteAsync(null)).GetAwaiter().GetResult();
         check(viewModel.Servers.Count == 1 && !viewModel.IsLoading, "Preferred browsing follows pagination after a page becomes empty when full servers are filtered");
+        handler.ContentOverride = request => request.RequestUri!.Host == "games.roblox.com" ? "{\"data\":[],\"nextPageCursor\":null}" : null;
+        Task.Run(() => viewModel.SearchCommand.ExecuteAsync(null)).GetAwaiter().GetResult();
+        check(viewModel.Servers.Count == 0 && !viewModel.IsLoading && viewModel.NextCursor.Length == 0 && viewModel.SearchCommand.CanExecute(null),
+            "An actually empty public server list finishes cleanly and remains searchable without inventing a server");
         handler.ContentOverride = null;
         new NetworkTestResult { Status = "Unavailable fixture" }.Save();
         check(App.Settings.Prop.NetworkSetupVersion == 0, "Failed initialization remains eligible for a fresh setup attempt");
@@ -142,9 +163,25 @@ internal static class ServerBrowserChecks
             var uncovered = activeLocations.Where(location => !RoutingTargetDiscovery.CoversLocation(targets, location.City, location.Country)).ToList();
             Console.WriteLine($"Live datacenter probe coverage: {activeLocations.Count - uncovered.Count}/{activeLocations.Count} active locations have a published peering address.");
             Console.WriteLine("No address in the current peering inventory: " + string.Join("; ", uncovered.Select(location => $"{location.City}, {location.Country}")));
-            var servers = await browser.FetchServerInstancesAsync(4111023553, cancellationToken: budget.Token);
-            check(servers.Servers.Count > 0, "Live custom browser loads Deepwoken's public server list without an account cookie");
-            Console.WriteLine($"Public network loading: {targets.Count} addresses across {targets.Select(x => (x.City, x.Country)).Distinct().Count()} locations; {centers!.Value.regions.Count} datacenter choices; {servers.Servers.Count} public Deepwoken servers.");
+            int joinable = 0;
+            // Server population is external, changing state. An empty/full first
+            // page is a valid response, not evidence of a transport failure.
+            // Still require a real joinable result within this bounded audit.
+            for (int attempt = 0; attempt < 3 && joinable == 0; attempt++)
+            {
+                string cursor = "";
+                for (int page = 0; page < 3; page++)
+                {
+                    var servers = await browser.FetchServerInstancesAsync(4111023553, cursor, cancellationToken: budget.Token);
+                    joinable = servers.Servers.Count;
+                    Console.WriteLine($"Live browser attempt {attempt + 1}, page {page + 1}: {joinable} joinable servers; next page: {!string.IsNullOrEmpty(servers.NextCursor)}.");
+                    if (joinable > 0 || string.IsNullOrEmpty(servers.NextCursor) || servers.NextCursor == cursor) break;
+                    cursor = servers.NextCursor;
+                }
+                if (joinable == 0 && attempt < 2) await Task.Delay(TimeSpan.FromSeconds(2 * (attempt + 1)), budget.Token);
+            }
+            check(joinable > 0, "Live custom browser loads Deepwoken's public server list without an account cookie within the bounded audit");
+            Console.WriteLine($"Public network loading: {targets.Count} addresses across {targets.Select(x => (x.City, x.Country)).Distinct().Count()} locations; {centers!.Value.regions.Count} datacenter choices; {joinable} public Deepwoken servers.");
         }).GetAwaiter().GetResult();
     }
 }

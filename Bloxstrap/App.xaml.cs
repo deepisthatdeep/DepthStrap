@@ -62,6 +62,7 @@ namespace Bloxstrap
         public static string Version = AssemblyVersion.ToString(AssemblyVersion.Build == 0 && AssemblyVersion.Revision == 0 ? 2 : 3);
 
         public static Bootstrapper? Bootstrapper { get; set; } = null!;
+        internal static bool CompleteUninstallHandoff { get; set; }
 
         public FroststrapRichPresence RichPresence { get; private set; } = null!;
 
@@ -249,6 +250,21 @@ namespace Bloxstrap
 
         protected override async void OnStartup(StartupEventArgs e)
         {
+            if (e.Args.Length > 0 && e.Args[0] == DepthStrap.Recovery.CompleteUninstallControls.Flag)
+            {
+                try
+                {
+                    DepthStrap.Recovery.CompleteUninstallControls.ValidateArguments(e.Args);
+                    if (!DepthStrap.Recovery.WindowsMacBackend.IsAdministrator()) throw new UnauthorizedAccessException("Administrator approval is required.");
+                    DepthStrap.Recovery.RecoveryTheme.InitializeHelperAppearance(Paths.Process);
+                    var window = new DepthStrap.Recovery.CompleteUninstallWindow(() => DepthStrap.Recovery.RobloxCompleteUninstall.ForWindows(Paths.Process));
+                    window.Closed += (_, _) => Shutdown();
+                    window.Show();
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                { DepthStrap.Recovery.RecoveryPrompt.Show(ex.Message, "Complete uninstall", MessageBoxButton.OK, MessageBoxImage.Warning); Shutdown(1); }
+                return;
+            }
             // This installed app also hosts the explicitly elevated MAC action.
             // Dispatch before any launcher, installer or normal settings work.
             if (e.Args.Length > 0 && e.Args[0] is "--mac-apply" or "--mac-restore")

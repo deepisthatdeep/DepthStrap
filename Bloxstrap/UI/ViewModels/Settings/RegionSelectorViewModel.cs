@@ -31,6 +31,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
         private int _gameSearchVersion;
         private CancellationTokenSource? _gameSearchCts;
         private int _queryVersion;
+        private bool _selectingGame;
         internal const string AllRegions = "All regions";
         private Dictionary<int, string>? _dcMap;
         private CancellationTokenSource? _searchDebounceCts;
@@ -92,7 +93,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
             Func<List<ThumbnailRequest>, CancellationToken, Task<string?[]>>? loadThumbnails = null)
         {
             _fetcher = fetcher;
-            _launch = launch ?? (uri => Process.Start(new ProcessStartInfo { FileName = uri, UseShellExecute = true }));
+            _launch = launch ?? (uri => Process.Start(PlayerLaunchStartInfo(uri))?.Dispose());
             _searchGames = searchGames ?? GameSearching.GetGameSearchResultsAsync;
             _loadThumbnails = loadThumbnails ?? Thumbnails.GetThumbnailUrlsAsync;
             Regions.Add(AllRegions);
@@ -110,6 +111,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
 
         partial void OnSearchQueryChanged(string value)
         {
+            if (_selectingGame || (SelectedSearchResult is not null && value == SelectedSearchResult.Name)) return;
             CancelGameSearch();
             SearchResults.Clear();
             PlaceId = long.TryParse(value, out _) ? value : "";
@@ -134,8 +136,12 @@ namespace Bloxstrap.UI.ViewModels.Settings
         partial void OnSelectedSearchResultChanged(OmniSearchContent? value)
         {
             if (value == null) return;
-            PlaceId = value.RootPlaceId.ToString();
-            SearchQuery = value.RootPlaceId.ToString();
+            CancelGameSearch();
+            _searchDebounceCts?.Cancel();
+            _selectingGame = true;
+            try { PlaceId = value.RootPlaceId.ToString(); SearchQuery = value.Name ?? PlaceId; }
+            finally { _selectingGame = false; }
+            if (SearchCommand.CanExecute(null)) SearchCommand.Execute(null);
         }
 
         public string? SelectedRegion
@@ -358,6 +364,13 @@ namespace Bloxstrap.UI.ViewModels.Settings
                 _launch($"roblox://experiences/start?placeId={placeId}&gameInstanceId={serverId}");
             }
             catch (Exception ex) { App.Logger.WriteException(LOG_IDENT, ex); }
+        }
+
+        internal static ProcessStartInfo PlayerLaunchStartInfo(string uri)
+        {
+            var start = new ProcessStartInfo(Paths.Application) { UseShellExecute = false, WorkingDirectory = Paths.Base };
+            start.ArgumentList.Add("-player"); start.ArgumentList.Add(uri); start.ArgumentList.Add("-skipappupdate");
+            return start;
         }
 
         private string GetCachePath() => Path.Combine(Paths.Cache, "DataCentersCache.json");

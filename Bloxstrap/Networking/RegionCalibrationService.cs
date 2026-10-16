@@ -8,7 +8,7 @@ namespace Bloxstrap.Networking
         private static readonly HttpClient Client = CreateClient();
         private static HttpClient CreateClient()
         {
-            var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30), MaxResponseContentBufferSize = 4 * 1024 * 1024 };
             client.DefaultRequestHeaders.UserAgent.ParseAdd($"DepthStrap/{App.Version}"); return client;
         }
         internal static Semaphore OpenOperationGate() => new(1, 1, "DepthStrap-NetworkSetup");

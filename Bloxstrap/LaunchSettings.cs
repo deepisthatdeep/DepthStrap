@@ -54,7 +54,7 @@ namespace Bloxstrap
 #if DEBUG
         public bool BypassUpdateCheck => true;
 #else
-        public bool BypassUpdateCheck => UninstallFlag.Active || WatcherFlag.Active;
+        public bool BypassUpdateCheck => UninstallFlag.Active || WatcherFlag.Active || MultiInstanceWatcherFlag.Active || PostLaunchFlag.Active || BackgroundUpdaterFlag.Active || NoLaunchFlag.Active;
 #endif
 
         public LaunchMode RobloxLaunchMode { get; set; } = LaunchMode.None;

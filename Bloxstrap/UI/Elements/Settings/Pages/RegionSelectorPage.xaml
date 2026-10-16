@@ -50,12 +50,12 @@
                         Margin="8,0,0,0"
                         VerticalAlignment="Center"
                         IsEditable="True"
-                        IsTextSearchEnabled="True"
+                        IsTextSearchEnabled="False"
                         ItemsSource="{Binding SearchResults}"
                         SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
                         StaysOpenOnEdit="True"
                         Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                        TextSearch.TextPath="RootPlaceId">
+                        TextSearch.TextPath="Name">
 
                         <ComboBox.ItemTemplate>
                             <DataTemplate>

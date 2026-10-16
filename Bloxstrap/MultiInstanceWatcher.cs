@@ -59,21 +59,37 @@ namespace Bloxstrap
         }
 
         public static void Run()
+            => RunForObjects(ReadyEventName, FailedEventName, "DepthStrap-MultiInstanceWatcher", "ROBLOX_singletonMutex", "ROBLOX_singletonEvent",
+                CountPlayers, () => Utilities.DoesMutexExist("Bloxstrap-Bootstrapper"));
+
+        private static int CountPlayers()
+        {
+            try
+            {
+                var players = Process.GetProcessesByName("RobloxPlayerBeta");
+                try { return players.Length; }
+                finally { foreach (var player in players) player.Dispose(); }
+            }
+            catch (Exception ex) { App.Logger.WriteException("MultiInstanceWatcher", ex); return -1; }
+        }
+
+        internal static void RunForObjects(string readyName, string failedName, string guardName, string singletonName, string singletonEventName,
+            Func<int> playerCount, Func<bool> launching)
         {
             // Ownership stays on this thread for the lifetime of every launched Player.
             Reservation? singleton = null, singletonEvent = null;
-            using var guard = new Mutex(false, "DepthStrap-MultiInstanceWatcher");
+            using var guard = new Mutex(false, guardName);
             bool ownsGuard;
             try { ownsGuard = guard.WaitOne(0); }
             catch (AbandonedMutexException) { ownsGuard = true; }
             if (!ownsGuard) return;
-            using var ready = new EventWaitHandle(false, EventResetMode.ManualReset, ReadyEventName);
-            using var failed = new EventWaitHandle(false, EventResetMode.ManualReset, FailedEventName);
+            using var ready = new EventWaitHandle(false, EventResetMode.ManualReset, readyName);
+            using var failed = new EventWaitHandle(false, EventResetMode.ManualReset, failedName);
             ready.Reset(); failed.Reset();
             try
             {
-                singleton = new Reservation("ROBLOX_singletonMutex");
-                singletonEvent = new Reservation("ROBLOX_singletonEvent");
+                singleton = new Reservation(singletonName);
+                singletonEvent = new Reservation(singletonEventName);
                 App.Logger.WriteLine("MultiInstanceWatcher", singleton.Owned && singletonEvent.Owned
                     ? "Reserved both singleton mutexes."
                     : "Sharing existing singleton mutex reservations with another launcher; retaining handles and taking ownership when released.");
@@ -82,17 +98,10 @@ namespace Bloxstrap
                 while (true)
                 {
                     singleton.TryOwn(); singletonEvent.TryOwn();
-                    int count = -1;
-                    try
-                    {
-                        var players = Process.GetProcessesByName("RobloxPlayerBeta");
-                        count = players.Length;
-                        foreach (var player in players) player.Dispose();
-                    }
-                    catch (Exception ex) { App.Logger.WriteException("MultiInstanceWatcher", ex); }
+                    int count = playerCount();
                     seenPlayer |= count > 0;
                     if (Roblox.MultiInstanceLifetime.ShouldStop(elapsed.Elapsed, seenPlayer, count,
-                        Utilities.DoesMutexExist("Bloxstrap-Bootstrapper"))) break;
+                        launching())) break;
                     Thread.Sleep(500);
                 }
             }

@@ -1,4 +1,4 @@
-param([string]$Version='1.2.1')
+param([string]$Version='1.2.2')
 $ErrorActionPreference='Stop'
 $privateEmails = @(& git log depthstrap/main --format='%ae%n%ce' | Where-Object { $_ -match '@yahoo\.|@hotmail\.|@outlook\.' } | Sort-Object -Unique)
 $needles = @($env:USERNAME, $env:USERPROFILE, $env:USERPROFILE.Replace('\','/')) + $privateEmails
@@ -21,7 +21,10 @@ function Scan-Stream([IO.Stream]$stream, [string]$label) {
     }
 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-foreach ($zipFile in Get-ChildItem (Join-Path $PSScriptRoot '../artifacts/release') -Filter ("DepthStrap-"+$Version+"-*.zip")) {
+$archives = @('source','win-x64') | ForEach-Object { Join-Path $PSScriptRoot ("../artifacts/release/DepthStrap-$Version-$_.zip") }
+foreach ($archive in $archives) { if (!(Test-Path -LiteralPath $archive -PathType Leaf)) { throw 'A required release archive is missing.' } }
+foreach ($archive in $archives) {
+    $zipFile=Get-Item -LiteralPath $archive
     $zip=[IO.Compression.ZipFile]::OpenRead($zipFile.FullName)
     try {
         foreach ($entry in $zip.Entries) {

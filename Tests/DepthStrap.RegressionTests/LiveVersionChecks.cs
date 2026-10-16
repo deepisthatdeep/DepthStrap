@@ -8,9 +8,21 @@ using Bloxstrap.Roblox;
 
 internal static class LiveVersionChecks
 {
-    internal static async Task RunAsync(string reportRoot)
+    internal static async Task RunAsync(string reportRoot, bool historical = false)
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        var releases = new List<(string Number, string Hash)>();
+        if (historical)
+        {
+            foreach (var entry in RobloxReleaseLookup.VerifiedHistory)
+            {
+                string resolved = await RobloxReleaseLookup.ResolveAsync(entry.Release, budget.Token);
+                if (resolved != entry.Hash) throw new IOException("Historical lookup sources do not agree.");
+                releases.Add((entry.Release, resolved));
+            }
+        }
+        else
+        {
         var labels = await RobloxReleaseLookup.GetReleaseLabelsAsync();
         if (!RobloxReleaseLookup.IsReleaseNumber(labels.Current) || !RobloxReleaseLookup.IsReleaseNumber(labels.Previous))
             throw new IOException("Current or downgrade release labels are unavailable.");
@@ -18,8 +30,10 @@ internal static class LiveVersionChecks
         string previous = await RobloxReleaseLookup.ResolveAsync(labels.Previous!, budget.Token);
         if (previous != await WeaoDowngradeSource.GetPreviousAsync(budget.Token))
             throw new IOException("Downgrade lookup sources do not agree.");
+        releases.Add((labels.Current!, current)); releases.Add((labels.Previous!, previous));
+        }
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(90), MaxResponseContentBufferSize = 256 * 1024 * 1024 };
-        foreach (var release in new[] { (Number: labels.Current!, Hash: current), (Number: labels.Previous!, Hash: previous) })
+        foreach (var release in releases)
         {
             string url = "https://setup.rbxcdn.com/" + release.Hash + "-";
             var manifest = new PackageManifest(await client.GetStringAsync(url + "rbxPkgManifest.txt", budget.Token));

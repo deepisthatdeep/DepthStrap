@@ -39,7 +39,7 @@
                     <controls:OptionControl Header="Current installed Roblox build" Description="Read from the Player installation state when this page opens or builds are refreshed.">
                         <TextBlock Text="{Binding InstalledBuild}" TextWrapping="Wrap" MaxWidth="300" />
                     </controls:OptionControl>
-                    <controls:OptionControl Header="Roblox build hash or release number" Description="Enter version- followed by 16 hexadecimal characters, or a full release number such as 0.741.0.7411058. Release lookup requires an exact Windows Player match. Installation does not launch Roblox.">
+                    <controls:OptionControl Header="Roblox build hash or release number" Description="Enter a release family such as 741, choose a full release from the dropdown, or paste a version- build hash. A family installs its newest known Windows Player release. Installation does not launch Roblox.">
                         <StackPanel Width="300">
                             <TextBox Tag="ReleaseNumberInput" Padding="6,3" IsEnabled="{Binding CanEditVersion}"
                                      Text="{Binding VersionId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -57,7 +57,7 @@
                     </controls:OptionControl>
                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                         <ui:Button Content="Install / roll back" Command="{Binding InstallVersionCommand}" Padding="12,6" />
-                        <ui:Button Content="Use latest" Command="{Binding UseLatestCommand}" Margin="8,0" Padding="12,6" />
+                        <ui:Button Content="Install current / update" Command="{Binding UseLatestCommand}" Margin="8,0" Padding="12,6" />
                         <ui:Button Content="Refresh builds" Command="{Binding RefreshVersionsCommand}" Padding="12,6" />
                     </StackPanel>
                     <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,8,0,0" />

@@ -26,6 +26,14 @@ internal static class WatcherChecks
         lifetime.Observe(TimeSpan.FromMinutes(5), false); lifetime.Observe(TimeSpan.FromMinutes(6), null);
         check(lifetime.Observe(TimeSpan.FromMinutes(6), false) is null,
             "Failed window inspection resets the absence interval rather than assuming closure");
+        check(!lifetime.ShouldTerminate(TimeSpan.FromDays(1)), "Missing or hidden windows alone never authorize Player cleanup");
+        lifetime = new PlayerWindowLifetime();
+        lifetime.Observe(TimeSpan.Zero, true);
+        lifetime.Observe(TimeSpan.FromSeconds(1), false, true);
+        check(!lifetime.ShouldTerminate(TimeSpan.FromSeconds(30)) && lifetime.ShouldTerminate(TimeSpan.FromSeconds(31)),
+            "A destroyed previously observed window permits cleanup only after the full 30-second grace period");
+        lifetime.Observe(TimeSpan.FromSeconds(32), true);
+        check(!lifetime.ShouldTerminate(TimeSpan.FromDays(1)), "A recreated Player window cancels pending cleanup");
         string root = Path.Combine(Paths.Base, "startup-fixture");
         long startTime = DateTime.UtcNow.AddSeconds(2).Ticks;
         var workers = Enumerable.Range(0, 8).Select(_ =>

@@ -329,7 +329,7 @@ namespace Bloxstrap
                         Frontend.ShowBalloonTip(Strings.Bootstrapper_ModificationsFailed_Title, Strings.Bootstrapper_ModificationsFailed_Message, ToolTipIcon.Warning);
                 }
 
-                StartRoblox();
+                await StartRoblox();
             }
 
             await mutex.ReleaseAsync();
@@ -643,7 +643,7 @@ namespace Bloxstrap
             return Frontend.ShowMessageBox(message + "\n\nLaunch Roblox normally this time?", MessageBoxImage.Warning, MessageBoxButton.YesNo) == MessageBoxResult.Yes;
         }
 
-        private async void StartRoblox()
+        private async Task StartRoblox()
         {
             const string LOG_IDENT = "Bootstrapper::StartRoblox";
 
@@ -816,7 +816,8 @@ namespace Bloxstrap
                 App.Logger.WriteLine(LOG_IDENT, $"Got log file as {logFileName}");
             }
 
-            _mutex?.ReleaseAsync();
+            // Run owns the launch lock until the Player and its watcher have
+            // started. Releasing it earlier lets another launcher overlap this handoff.
 
             if (!IsStudioLaunch)
             {
@@ -870,7 +871,7 @@ namespace Bloxstrap
 
             bool competitiveMonitoring = Competitive.RegionMonitoringPolicy.NeedsWatcher(App.Settings.Prop);
 
-            if (App.Settings.Prop.EnableActivityTracking || App.LaunchSettings.TestModeFlag.Active || autoclosePids.Any() || competitiveMonitoring)
+            if (_launchMode == LaunchMode.Player || App.Settings.Prop.EnableActivityTracking || App.LaunchSettings.TestModeFlag.Active || autoclosePids.Any() || competitiveMonitoring)
             {
                 using var ipl = new InterProcessLock("Watcher", TimeSpan.FromSeconds(5));
 

@@ -1,12 +1,14 @@
 #requires -Version 7.4
 param(
-    [string]$Version='1.2.1',
+    [string]$Version='1.2.2',
+    [ValidateRange(1,3)][int]$AuditPass=1,
     [string]$DotNet='dotnet',
     [string]$PowerShell7=(Get-Command pwsh -ErrorAction Stop).Source
 )
 $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$report=Join-Path $root ('artifacts/full-audit-'+[guid]::NewGuid().ToString('N'))
+$report=Join-Path $root ('artifacts/full-audit-pass'+$AuditPass+'-'+[guid]::NewGuid().ToString('N'))
+$source=Join-Path $report 'clean-source'
 New-Item -ItemType Directory -Path $report | Out-Null
 $checks=[Collections.Generic.List[object]]::new()
 function Native([string]$file,[string[]]$arguments) {
@@ -45,6 +47,7 @@ try{
     Step 'App-wide regressions and theme layouts' {Native $DotNet @($regression,(Join-Path $report 'public-app.png'))}
     Step 'Toolkit reset and simulated MAC transactions' {Native $DotNet @($recovery,'--self-test')}
     Step 'Toolkit navigation and background synchronization' {Native $DotNet @($recovery,'--ui',(Join-Path $report 'recovery-ui'))}
+    Step 'Embedded Store servicing error paths' {Native $DotNet @($recovery,'--store-servicing-fixture')}
     Step 'Adapter provider fixtures' {
         Native (Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe') @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File','Tests/DepthStrap.RecoveryTests/AdapterDriverFixture.ps1','-Source','Bloxstrap/Recovery/AdapterDriver.ps1')
     }
@@ -70,18 +73,46 @@ try{
     Step 'Approved release source presence' {
         $zip=[IO.Compression.ZipFile]::OpenRead((Join-Path $root "artifacts/release/DepthStrap-$Version-source.zip"))
         try{
-            foreach($file in @('Bloxstrap/Recovery/MacControls.cs','Bloxstrap/Recovery/AdapterDriver.ps1','Bloxstrap/Recovery/Core/MacChange.cs','Bloxstrap/Roblox/RobloxClientVersion.cs','Bloxstrap/UI/Elements/Settings/Pages/AntiApiPage.cs','Tests/DepthStrap.RecoveryTests/Program.cs')){
+            foreach($file in @('Bloxstrap/Recovery/MacControls.cs','Bloxstrap/Recovery/AdapterDriver.ps1','Bloxstrap/Recovery/Core/MacChange.cs','Bloxstrap/Recovery/RobloxCompleteUninstall.cs','Bloxstrap/Recovery/CompleteUninstallWindow.cs','Bloxstrap/Recovery/RobloxWipeRegistryScope.cs','Bloxstrap/Recovery/BrowserCookieReset.cs','Bloxstrap/Recovery/BrowserCookieDatabase.cs','Bloxstrap/Recovery/FirefoxSessionCookies.cs','Bloxstrap/Roblox/RobloxClientVersion.cs','Bloxstrap/UI/Elements/Settings/Pages/AntiApiPage.cs','Tests/DepthStrap.RecoveryTests/Program.cs')){
                 $entry=$zip.GetEntry($file);if(!$entry){throw ('Approved source missing: '+$file)}
                 $reader=[IO.StreamReader]::new($entry.Open());try{$archived=$reader.ReadToEnd()}finally{$reader.Dispose()}
                 if($archived -ne [IO.File]::ReadAllText((Join-Path $root $file))){throw ('Packaged source differs: '+$file)}
             }
-            Write-Output 'PASS: approved runtime, resource, version parsing and tests are present in the source archive.'
+            foreach($entry in $zip.Entries){
+                if($entry.FullName.EndsWith('/')){continue}
+                $workspace=[IO.Path]::GetFullPath((Join-Path $root $entry.FullName))
+                if(!$workspace.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase) -or !(Test-Path -LiteralPath $workspace -PathType Leaf)){throw 'Unexpected source archive path.'}
+                $archived=$entry.Open();$current=[IO.File]::OpenRead($workspace)
+                try{
+                    $a=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($archived));$b=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($current))
+                    if($a -ne $b){throw ('Source archive differs from the candidate: '+$entry.FullName)}
+                }finally{$archived.Dispose();$current.Dispose()}
+            }
+            Write-Output ('PASS: required recovery modules and all '+$zip.Entries.Count+' source entries match the candidate.')
         }finally{$zip.Dispose()}
     }
     Step 'Clean extracted source solution build' {
-        $source=Join-Path $report 'clean-source'
         [IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $root "artifacts/release/DepthStrap-$Version-source.zip"),$source)
         Native $DotNet @('build',(Join-Path $source 'DepthStrap.slnx'),'-c','Release','-m:1','-p:UseSharedCompilation=false','-v','minimal')
+    }
+    if($AuditPass -eq 1){
+        Step 'Real isolated multi-instance and window lifetime' {
+            Native $DotNet @($regression,'--multi-instance-audit',(Join-Path $report 'multi-instance'))
+            Native $DotNet @($regression,'--player-lifetime-audit',(Join-Path $report 'player-lifetime'))
+        }
+    }
+    if($AuditPass -eq 2){
+        Step 'Large uninstall and historical release families' {
+            Native $DotNet @($recovery,'--large-uninstall-fixture',(Join-Path $report 'large-uninstall'))
+            Native $DotNet @($regression,'--historical-version-audit',(Join-Path $report 'historical-packages'))
+        }
+    }
+    if($AuditPass -eq 3){
+        Step 'Independent extracted-source runtime checks' {
+            Native $DotNet @((Join-Path $source $regression),(Join-Path $report 'clean-source-app.png'))
+            Native $DotNet @((Join-Path $source $recovery),'--self-test')
+            Native $DotNet @((Join-Path $source $recovery),'--ui',(Join-Path $report 'clean-source-recovery'))
+        }
     }
 }finally{Pop-Location}
 Write-Output ('PASS: '+$checks.Count+' full audit groups. Report: '+$report)

@@ -5,6 +5,15 @@ internal static class RecoveryTestProgram
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Length == 3 && args[0] == "--offline-hive-fixture") { OfflineHiveFixture.Run(args[1], args[2]); return; }
+        if (args.Length == 2 && args[0] == "--admin-reset-fixture") { ElevatedResetFixture.Run(args[1]); return; }
+        if (args.SequenceEqual(new[] { "--store-servicing-fixture" }))
+        { StoreServicingFixture.Run((value, description) => { if (!value) throw new InvalidOperationException(description); Console.WriteLine("PASS: " + description); }); return; }
+        if (args.Length == 2 && args[0] == "--large-uninstall-fixture")
+        {
+            string root = Path.GetFullPath(args[1]); Directory.CreateDirectory(root);
+            CompleteUninstallTests.LargeTree(root, (value, description) => { if (!value) throw new InvalidOperationException(description); Console.WriteLine("PASS: " + description); }); return;
+        }
         if (args.Length == 2 && args[0] == "--ui") { ToolkitUiChecks.Run(args[1]); return; }
         if (args.SequenceEqual(new[] { "--socket" })) { SocketPinSmoke.Run(); return; }
         if (args.SequenceEqual(new[] { "--inspect" }))
@@ -29,7 +38,19 @@ internal static class RecoveryTestProgram
                 !apply.ArgumentList.SequenceEqual(new[] { "--mac-apply", adapter.ToString("D"), "021122334455" }) ||
                 !restore.ArgumentList.SequenceEqual(new[] { "--mac-restore", adapter.ToString("D") }))
                 throw new InvalidOperationException("Unexpected package helper handoff.");
-            Console.WriteLine("PASS: packaged app identity and elevated apply/restore handoff. No helper was launched."); return;
+            string fixture = Path.Combine(Path.GetDirectoryName(executable)!, "helper-package-fixture-" + Guid.NewGuid().ToString("N"), "DepthStrap");
+            Directory.CreateDirectory(fixture);
+            string copy = Path.Combine(fixture, "DepthStrap.exe");
+            try
+            {
+                File.Copy(executable, copy);
+                var reset = CompleteUninstallControls.StartInfo(copy);
+                if (reset.FileName != copy || !reset.UseShellExecute || reset.Verb != "runas" || reset.WorkingDirectory != fixture ||
+                    !reset.ArgumentList.SequenceEqual(new[] { CompleteUninstallControls.Flag }))
+                    throw new InvalidOperationException("Unexpected complete-reset package handoff.");
+            }
+            finally { File.Delete(copy); Directory.Delete(fixture); Directory.Delete(Path.GetDirectoryName(fixture)!); }
+            Console.WriteLine("PASS: packaged app identity and elevated complete-reset/apply/restore handoff. No helper was launched."); return;
         }
         if (!args.SequenceEqual(new[] { "--self-test" })) throw new ArgumentException("Choose --self-test, --socket, or --ui <report-folder>.");
         SelfTests.Run();

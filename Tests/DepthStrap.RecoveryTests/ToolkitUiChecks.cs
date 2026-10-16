@@ -11,6 +11,7 @@ using Bloxstrap.UI.Elements.Settings.Pages;
 using Bloxstrap.Roblox;
 using Bloxstrap.UI;
 using Wpf.Ui.Controls;
+using DepthStrap.Recovery;
 using SettingsWindow = Bloxstrap.UI.Elements.Settings.MainWindow;
 
 internal static class ToolkitUiChecks
@@ -200,10 +201,123 @@ internal static class ToolkitUiChecks
         closeDialog.Start(); open.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent)); closeDialog.Stop();
         Check(openedFromSettings, "The actual settings button must open an owned modal recovery window");
         Check(installationPassedFromSettings, "The actual settings button must pass the current managed installation to reset previews");
+        var actionWindow = new RecoveryWindow(); actionWindow.Owner = window; actionWindow.Show(); Pump();
+        int resetCalls = 0;
+        actionWindow.ResetAction = (owner, report) => { Check(ReferenceEquals(owner, actionWindow), "The merged action retains its owner"); resetCalls++; report("synthetic handoff"); return Task.CompletedTask; };
+        var actionPanel = (StackPanel)((ScrollViewer)((Border)((Grid)actionWindow.Content).Children[0]).Child).Content;
+        var actionButtons = actionPanel.Children.OfType<StackPanel>().Single().Children.OfType<System.Windows.Controls.Button>().ToList();
+        Check(actionButtons.Count(button => button.Content.ToString()!.StartsWith("1.")) == 1 && !actionButtons.Any(button => button.Content.ToString()!.Contains("Delete Roblox registry keys")), "There is exactly one combined files/registry/browser-cookie reset action");
+        actionButtons[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent)); Pump();
+        actionWindow.ActionTask.GetAwaiter().GetResult();
+        Check(resetCalls == 1, "The real combined menu button dispatches its reset handoff exactly once");
+        actionWindow.Close();
+        string uninstallRoot = Path.Combine(Paths.Base, "complete-uninstall-ui", "DepthStrap"); Directory.CreateDirectory(uninstallRoot);
+        string retained = Path.Combine(uninstallRoot, "DepthStrap.exe"); File.WriteAllText(retained, "synthetic-app");
+        File.WriteAllText(Path.Combine(uninstallRoot, "Settings.json"), "synthetic-settings");
+        string browserPath = BrowserCookieResetTests.CreateChromium(Path.Combine(Paths.Base, "combined-browser-profile"));
+        var browserReset = new BrowserCookieReset(() => [new("Chrome fixture", browserPath, false)], () => false);
+        Guid mergedRegistryId = Guid.NewGuid();
+        string mergedRegistryPath = @"Software\DepthStrapRecoveryLabFixtures\" + mergedRegistryId.ToString("D");
+        using (var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(mergedRegistryPath)) key.SetValue("Synthetic", 1);
+        var mergedRegistry = RobloxRegistryReset.ForFixture(mergedRegistryId, () => false);
+        List<RobloxWipeRegistryItem> RegistryItems() => mergedRegistry.NativeIdentity() is string identity && identity.Length > 0
+            ? [new(mergedRegistry, mergedRegistry.Preview(), identity)] : [];
+        var storeFixture = new CompleteUninstallTests.Store();
+        int processCloses = 0;
+        var fullWindow = new CompleteUninstallWindow(() => new RobloxCompleteUninstall(() => [], RegistryItems,
+            () => new([uninstallRoot], [], []), storeFixture, () => false, retained, browserCookies: browserReset),
+            () => [new RobloxProcessIdentity(12345, 1, @"C:\Synthetic\RobloxPlayerBeta.exe", "RobloxPlayerBeta")],
+            (items, confirmed) => { Check(confirmed && items.Length == 1 && items[0].Id == 12345, "Only the displayed synthetic process is approved for closure"); processCloses++; });
+        fullWindow.Owner = window; fullWindow.Show(); Pump();
+        var fullPanel = (StackPanel)((ScrollViewer)fullWindow.Content).Content;
+        var fullButtons = fullPanel.Children.OfType<System.Windows.Controls.Button>().ToArray();
+        var consent = fullPanel.Children.OfType<System.Windows.Controls.CheckBox>().Single();
+        var phrase = fullPanel.Children.OfType<System.Windows.Controls.TextBox>().Single(box => !box.IsReadOnly);
+        void FullClick(int index)
+        {
+            fullButtons[index].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            // The click is dispatched, so pump once before reading ActionTask.
+            Pump();
+            while (!fullWindow.ActionTask.IsCompleted && clock.Elapsed < TimeSpan.FromSeconds(15)) Settle();
+            Check(fullWindow.ActionTask.IsCompleted, "The real complete-uninstall button finishes its async action");
+            fullWindow.ActionTask.GetAwaiter().GetResult();
+        }
+        try
+        {
+            Check(!fullButtons[2].IsEnabled, "Complete uninstall starts disabled");
+            FullClick(1);
+            Check(!fullButtons[2].IsEnabled && File.Exists(retained) && File.Exists(Path.Combine(uninstallRoot, "Settings.json")), "Creating the real uninstall preview changes no synthetic files");
+            phrase.Text = "  reset roblox  ";
+            Check(!fullButtons[2].IsEnabled, "Typed confirmation alone cannot authorize an all-user uninstall");
+            consent.IsChecked = true;
+            Check(fullButtons[2].IsEnabled, "Both explicit confirmations enable the reviewed uninstall");
+            Render(fullWindow, Path.Combine(reports, "complete-uninstall-preview.png"));
+            FullClick(2);
+            Check(File.Exists(retained) && !File.Exists(Path.Combine(uninstallRoot, "Settings.json")) && storeFixture.Removals == 1, "The actual complete-uninstall UI preserves only the exact original fixture executable");
+            using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(mergedRegistryPath)) Check(key is null, "The same real confirmation click deletes the previewed synthetic registry tree");
+            using (var cookies = new BrowserCookieDatabase(browserPath, false)) Check(cookies.Count(false) == 0 && cookies.Scalar("SELECT count(*) FROM cookies;") == 3, "The same real confirmation click clears Roblox browser cookies while preserving other sites");
+            Check(!fullButtons[2].IsEnabled && phrase.Text == "" && consent.IsChecked == false, "A completed uninstall clears confirmation and cannot replay the old preview");
+            var cancelClose = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+            cancelClose.Tick += (_, _) =>
+            {
+                var prompt = app.Windows.OfType<RecoveryPrompt>().FirstOrDefault(candidate => candidate.Owner == fullWindow);
+                if (prompt is null) return;
+                cancelClose.Stop();
+                var body = (StackPanel)((ScrollViewer)prompt.Content).Content;
+                body.Children.OfType<WrapPanel>().Single().Children.OfType<System.Windows.Controls.Button>().Single(button => Equals(button.Content, "No"))
+                    .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            };
+            cancelClose.Start(); try { FullClick(0); } finally { cancelClose.Stop(); }
+            Check(processCloses == 0, "Cancelling the remaining-process prompt closes no processes");
+            Render(fullWindow, Path.Combine(reports, "complete-uninstall-result.png"));
+        }
+        finally { fullWindow.Close(); Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(mergedRegistryPath, false); }
+        string handoffRoot = Path.Combine(Paths.Base, "handoff", "DepthStrap"); Directory.CreateDirectory(handoffRoot);
+        string handoffExecutable = Path.Combine(handoffRoot, "DepthStrap.exe");
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "DepthStrap.exe"), handoffExecutable);
+        string handoffReport = ""; int handoffStarts = 0, closeRequests = 0;
+        void Handoff(MessageBoxResult choice, bool cancelUac)
+        {
+            App.CompleteUninstallHandoff = false;
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+            timer.Tick += (_, _) =>
+            {
+                var prompt = app.Windows.OfType<RecoveryPrompt>().FirstOrDefault(candidate => candidate.Owner == window);
+                if (prompt is null) return;
+                timer.Stop();
+                var body = (StackPanel)((ScrollViewer)prompt.Content).Content;
+                body.Children.OfType<WrapPanel>().Single().Children.OfType<System.Windows.Controls.Button>().Single(button => Equals(button.Content, choice.ToString()))
+                    .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            };
+            timer.Start();
+            try
+            {
+                CompleteUninstallControls.ShowAsync(window, message => handoffReport = message, handoffExecutable, start =>
+                {
+                    handoffStarts++;
+                    Check(start.UseShellExecute && start.Verb == "runas" && start.FileName == handoffExecutable && start.ArgumentList.SequenceEqual(new[] { CompleteUninstallControls.Flag }),
+                        "The merged reset handoff requests administrator approval with only the fixed helper flag");
+                    if (cancelUac) throw new System.ComponentModel.Win32Exception(1223);
+                    return new System.Diagnostics.Process(); // No process is started by this fixture.
+                }, () => closeRequests++).GetAwaiter().GetResult();
+            }
+            finally { timer.Stop(); }
+        }
+        try
+        {
+            Handoff(MessageBoxResult.No, false);
+            Check(handoffStarts == 0 && closeRequests == 0 && !App.CompleteUninstallHandoff, "Cancelling the merged reset prompt requests neither UAC nor app shutdown");
+            Handoff(MessageBoxResult.Yes, true);
+            Check(handoffStarts == 1 && closeRequests == 0 && !App.CompleteUninstallHandoff && handoffReport.Contains("cancelled"), "Cancelling Windows elevation leaves DepthStrap open and reports that no reset ran");
+            Handoff(MessageBoxResult.Yes, false);
+            Check(handoffStarts == 2 && closeRequests == 1 && App.CompleteUninstallHandoff, "Only a successful elevated-helper start authorizes closing the normal app");
+        }
+        finally { App.CompleteUninstallHandoff = false; }
         Check(factory.Assembly == typeof(App).Assembly, "Recovery runtime and helper ship in the DepthStrap assembly");
         Check(!Directory.Exists(Path.Combine(Paths.Base, "Roblox")), "Opening toolkit menus must not install or alter Roblox data");
         window.Hide();
-        Console.WriteLine($"PASS: {_checks} production toolkit UI and helper checks; no reset or adapter change executed.");
+        Console.WriteLine($"PASS: {_checks} production toolkit UI and helper checks; resets used synthetic files/registry only. No real Roblox data or adapters changed.");
         app.Shutdown();
     }
     private static void Render(Window window, string path)

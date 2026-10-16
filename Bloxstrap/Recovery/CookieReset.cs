@@ -33,16 +33,23 @@ internal sealed class CookieReset(string robloxRoot, Func<bool> clientsRunning)
     }
     internal CookieResetResult Reset(bool confirmedSignOut, CancellationToken token = default)
     {
+        using var prepared = Prepare(confirmedSignOut, token);
+        return prepared.Delete(token);
+    }
+    internal Prepared Prepare(bool confirmedSignOut, CancellationToken token = default)
+    {
         if (!confirmedSignOut) throw new InvalidOperationException("Confirm that resetting cookies may sign you out of Roblox.");
         token.ThrowIfCancellationRequested();
         if (clientsRunning()) throw new InvalidOperationException("Close every Roblox Player and Studio window before resetting cookies.");
         // OPEN_REPARSE_POINT prevents following a file symlink. An exclusive handle
         // prevents replacement/renaming of the opened file before its disposition is set.
-        using var file = CreateFile(NativePath(_target), 0x00010000 | 0x00000080, 0, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero);
+        var file = CreateFile(NativePath(_target), 0x00010000 | 0x00000080, 0, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero);
+        try
+        {
         if (file.IsInvalid)
         {
             int error = Marshal.GetLastWin32Error();
-            if (error is 2 or 3) return CookieResetResult.NotPresent;
+            if (error is 2 or 3) { file.Dispose(); return new(null, clientsRunning); }
             throw new IOException("The cookie file is busy or inaccessible. It was left unchanged.", new Win32Exception(error));
         }
         if (!GetFileInformationByHandle(file, out var info)) throw new Win32Exception(Marshal.GetLastWin32Error());
@@ -57,10 +64,24 @@ internal sealed class CookieReset(string robloxRoot, Func<bool> clientsRunning)
         token.ThrowIfCancellationRequested();
         if (clientsRunning()) throw new InvalidOperationException("A Roblox client started during reset. The cookie file was preserved.");
         token.ThrowIfCancellationRequested();
-        var disposition = new FileDisposition { Flags = 1 | 0x10 }; // DELETE | IGNORE_READONLY_ATTRIBUTE
-        if (!SetFileInformationByHandle(file, 21, ref disposition, (uint)Marshal.SizeOf<FileDisposition>()))
-            throw new IOException("Windows could not remove the cookie file. It was left unchanged.", new Win32Exception(Marshal.GetLastWin32Error()));
-        return CookieResetResult.Removed; // The verified file is deleted as this handle closes.
+        return new(file, clientsRunning);
+        }
+        catch { file.Dispose(); throw; }
+    }
+    internal sealed class Prepared(SafeFileHandle? file, Func<bool> clientsRunning) : IDisposable
+    {
+        internal CookieResetResult Delete(CancellationToken token = default)
+        {
+            token.ThrowIfCancellationRequested();
+            if (clientsRunning()) throw new InvalidOperationException("A Roblox client started during reset. Remaining cookies were preserved.");
+            if (file is null) return CookieResetResult.NotPresent;
+            var disposition = new FileDisposition { Flags = 1 | 0x10 };
+            if (!SetFileInformationByHandle(file, 21, ref disposition, (uint)Marshal.SizeOf<FileDisposition>()))
+                throw new IOException("Windows could not remove the cookie file. It was left unchanged.", new Win32Exception(Marshal.GetLastWin32Error()));
+            file.Dispose();
+            return CookieResetResult.Removed;
+        }
+        public void Dispose() => file?.Dispose();
     }
     internal static string NormalizeFinalPath(string path) => path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)
         ? @"\\" + path[8..] : path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path[4..] : path;

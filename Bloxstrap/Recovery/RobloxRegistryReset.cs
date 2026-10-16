@@ -13,9 +13,32 @@ internal sealed class RobloxRegistryReset
     private readonly Guid _scope = Guid.NewGuid();
     private readonly string _path;
     private readonly Func<bool> _clientsRunning;
+    private readonly IntPtr _root = new(unchecked((int)0x80000001));
+    private readonly uint _view;
+    private readonly string _label = "HKCU";
     private RobloxRegistryReset(string path, Func<bool> clientsRunning) { _path = path; _clientsRunning = clientsRunning; }
     internal static RobloxRegistryReset ForCurrentUser() => new(@"Software\ROBLOX Corporation", CookieReset.ClientsRunning);
     internal static RobloxRegistryReset ForFixture(Guid fixture, Func<bool> clientsRunning) => new(@"Software\DepthStrapRecoveryLabFixtures\" + fixture.ToString("D"), clientsRunning);
+    internal static RobloxRegistryReset ForOpenRoot(RegistryKey root, string path, string label, Func<bool> running, RegistryView view = RegistryView.Default)
+        => new(path, running, root.Handle.DangerousGetHandle(), label, view);
+    private RobloxRegistryReset(string path, Func<bool> running, IntPtr root, string label, RegistryView view) : this(path, running)
+    { _root = root; _label = label; _view = view == RegistryView.Registry32 ? 0x200u : view == RegistryView.Registry64 ? 0x100u : 0; }
+    internal string NativeIdentity()
+    {
+        using var key = Open(_path, false);
+        if (key is null) return "";
+        NtQueryKey(key, 3, IntPtr.Zero, 0, out int size);
+        if (size is <= 4 or > 65536) throw new IOException("Registry identity is unavailable.");
+        IntPtr buffer = Marshal.AllocHGlobal(size);
+        try
+        {
+            if (NtQueryKey(key, 3, buffer, size, out _) != 0) throw new IOException("Registry identity is unavailable.");
+            int bytes = Marshal.ReadInt32(buffer);
+            if (bytes < 0 || bytes > size - 4 || bytes % 2 != 0) throw new IOException("Invalid registry identity.");
+            return Marshal.PtrToStringUni(buffer + 4, bytes / 2)!;
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
     internal RegistryResetPreview Preview() => Capture(false);
     internal void ValidatePreview(RegistryResetPreview preview, bool confirmed)
     {
@@ -49,7 +72,7 @@ internal sealed class RobloxRegistryReset
     {
         int count = 0, nodes = 0; var stamps = new List<string>();
         Visit(_path);
-        return new(_scope, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", stamps)))), count, "HKCU\\" + _path);
+        return new(_scope, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", stamps)))), count, _label + "\\" + _path);
         void Visit(string path)
         {
             if (++nodes > 10000) throw new IOException("Roblox registry data exceeds the preview limit.");
@@ -63,9 +86,9 @@ internal sealed class RobloxRegistryReset
             foreach (string child in key.GetSubKeyNames().Order(StringComparer.OrdinalIgnoreCase)) Visit(path + "\\" + child);
         }
     }
-    private static SafeRegistryHandle? Open(string path, bool writable)
+    private SafeRegistryHandle? Open(string path, bool writable)
     {
-        int result = RegOpenKeyEx(new IntPtr(unchecked((int)0x80000001)), path, 8, writable ? 0xf003fu : 0x20019u, out var key); // OPEN_LINK
+        int result = RegOpenKeyEx(_root, path, 8, (writable ? 0xf003fu : 0x20019u) | _view, out var key); // OPEN_LINK
         if (result == 2) { key.Dispose(); return null; }
         if (result != 0) { key.Dispose(); throw new IOException("Roblox registry data is inaccessible."); }
         uint length = 0;
@@ -81,6 +104,8 @@ internal sealed class RobloxRegistryReset
     private static extern int RegDeleteTree(SafeRegistryHandle key, string? child);
     [DllImport("ntdll.dll")]
     private static extern int NtDeleteKey(SafeRegistryHandle key);
+    [DllImport("ntdll.dll")]
+    private static extern int NtQueryKey(SafeRegistryHandle key, int informationClass, IntPtr buffer, int length, out int required);
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, EntryPoint = "RegQueryInfoKeyW")]
     private static extern int RegQueryInfoKey(SafeRegistryHandle key, IntPtr className, IntPtr classLength, IntPtr reserved, IntPtr subKeys, IntPtr maximumSubKey, IntPtr maximumClass,
         IntPtr values, IntPtr maximumValueName, IntPtr maximumValueLength, IntPtr securityLength, out long lastWriteTime);

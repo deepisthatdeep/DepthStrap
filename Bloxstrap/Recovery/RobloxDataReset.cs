@@ -14,9 +14,17 @@ internal sealed class RobloxDataReset
     private readonly Guid _scope = Guid.NewGuid();
     private readonly string[] _roots;
     private readonly Func<bool> _clientsRunning;
-    private const int MaximumEntries = 50000;
-    internal RobloxDataReset(IEnumerable<string> roots, Func<bool> clientsRunning)
+    private readonly bool _allowRootFiles;
+    private readonly string? _preservedExecutable;
+    private const int MaximumEntries = 2000000;
+    internal RobloxDataReset(IEnumerable<string> roots, Func<bool> clientsRunning) : this(roots, clientsRunning, false, null) { }
+    internal RobloxDataReset(IEnumerable<string> roots, Func<bool> clientsRunning, bool allowRootFiles = false, string? preservedExecutable = null)
     {
+        if (preservedExecutable is not null && (!Path.IsPathFullyQualified(preservedExecutable)
+            || !Path.GetFileName(preservedExecutable).Equals("DepthStrap.exe", StringComparison.OrdinalIgnoreCase)))
+            throw new ArgumentException("Only an exact installed DepthStrap.exe can be preserved.");
+        _preservedExecutable = preservedExecutable is null ? null : Path.GetFullPath(preservedExecutable);
+        _allowRootFiles = allowRootFiles;
         _roots = roots.Select(root =>
         {
             if (string.IsNullOrWhiteSpace(root) || !Path.IsPathFullyQualified(root))
@@ -81,6 +89,12 @@ internal sealed class RobloxDataReset
         using var snapshot = Capture(token);
         return Describe(snapshot);
     }
+    internal bool HasOnlyPreservedExecutable()
+    {
+        using var snapshot = Capture(CancellationToken.None);
+        return snapshot.Entries.All(entry => entry.Directory && _preservedExecutable is not null
+            && _preservedExecutable.StartsWith(entry.Path.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase));
+    }
     internal ResetOutcome Execute(ResetPreview preview, bool confirmed, CancellationToken token = default)
     {
         if (!confirmed) throw new InvalidOperationException("Confirm permanent deletion and sign-out first.");
@@ -91,9 +105,8 @@ internal sealed class RobloxDataReset
         if (_clientsRunning()) throw new InvalidOperationException("A Roblox client started. The reset was cancelled.");
         token.ThrowIfCancellationRequested();
         int files = 0, directories = 0;
-        // All entries have verified, retained handles before the first deletion.
-        // Child handles close before their parent is deleted. New data can make
-        // a directory nonempty; this is reported as incomplete rather than swept.
+        // Retain directory anchors, but reopen files against their captured IDs.
+        // This bounds handle usage for large installations without following links.
         foreach (var entry in snapshot.Entries.OrderByDescending(entry => entry.Path.Length))
         {
             try
@@ -101,7 +114,9 @@ internal sealed class RobloxDataReset
                 token.ThrowIfCancellationRequested();
                 if (_clientsRunning()) throw new InvalidOperationException("A Roblox client started during reset.");
                 token.ThrowIfCancellationRequested();
-                entry.Delete();
+                if (_preservedExecutable is not null && (entry.Path.Equals(_preservedExecutable, StringComparison.OrdinalIgnoreCase)
+                    || _preservedExecutable.StartsWith(entry.Path.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase))) continue;
+                entry.DeleteVerified();
                 if (entry.Directory) directories++; else files++;
             }
             catch (Exception ex) when (ex is IOException or Win32Exception or OperationCanceledException or InvalidOperationException)
@@ -109,7 +124,7 @@ internal sealed class RobloxDataReset
                 return new(false, files, directories, "Reset incomplete. Some files may already be removed; remaining data was preserved. Close Roblox and review a new preview before retrying.");
             }
         }
-        return new(true, files, directories, "The listed Roblox data folders were removed. Sign-in and local settings will reset. Other installations and Windows logs were not changed.");
+        return new(true, files, directories, "The previewed files and folders were removed. Any explicitly preserved DepthStrap.exe and its parent folders remain.");
     }
     private Snapshot Capture(CancellationToken token)
     {
@@ -121,11 +136,12 @@ internal sealed class RobloxDataReset
             {
                 token.ThrowIfCancellationRequested();
                 if (snapshot.Entries.Count >= MaximumEntries) throw new IOException("Reset exceeds the preview entry limit.");
+                if (next.Path.Equals(_preservedExecutable, StringComparison.OrdinalIgnoreCase)) continue;
                 var entry = Entry.Open(next.Path, next.Root);
                 if (entry is null) continue;
                 snapshot.Entries.Add(entry);
-                if (next.Root && !entry.Directory) throw new IOException("An expected Roblox directory is a file; nothing was removed.");
-                if (!entry.Directory) continue;
+                if (next.Root && !entry.Directory && !_allowRootFiles) throw new IOException("An expected Roblox directory is a file; nothing was removed.");
+                if (!entry.Directory) { entry.Dispose(); continue; }
                 foreach (string child in Directory.EnumerateFileSystemEntries(next.Path))
                 {
                     token.ThrowIfCancellationRequested();
@@ -140,8 +156,9 @@ internal sealed class RobloxDataReset
     private ResetPreview Describe(Snapshot snapshot)
     {
         // Hash metadata, not contents. File IDs catch same-size replacements.
-        string metadata = string.Join("\n", snapshot.Entries.OrderBy(entry => entry.Path, StringComparer.OrdinalIgnoreCase).Select(entry => entry.Stamp));
-        return new(_scope, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(metadata))), _roots.ToArray(),
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (var entry in snapshot.Entries.OrderBy(entry => entry.Path, StringComparer.OrdinalIgnoreCase)) hash.AppendData(Encoding.UTF8.GetBytes(entry.Stamp + "\n"));
+        return new(_scope, Convert.ToHexString(hash.GetHashAndReset()), _roots.ToArray(),
             snapshot.Entries.Count(entry => !entry.Directory), snapshot.Entries.Where(entry => !entry.Directory).Sum(entry => entry.Size));
     }
     private sealed class Snapshot : IDisposable
@@ -188,6 +205,13 @@ internal sealed class RobloxDataReset
             var disposition = new DispositionEx { Flags = 1 | 0x10 }; // DELETE | IGNORE_READONLY_ATTRIBUTE
             if (!SetFileInformationByHandle(handle, 21, ref disposition, 4)) throw new IOException("Windows refused a Roblox data deletion.", new Win32Exception(Marshal.GetLastWin32Error()));
             handle.Dispose();
+        }
+        internal void DeleteVerified()
+        {
+            if (Directory) { Delete(); return; }
+            using var reopened = Open(path, false) ?? throw new IOException("A previewed file disappeared.");
+            if (reopened.Stamp != Stamp) throw new IOException("A previewed file changed during reset.");
+            reopened.Delete();
         }
         public void Dispose() => handle.Dispose();
     }

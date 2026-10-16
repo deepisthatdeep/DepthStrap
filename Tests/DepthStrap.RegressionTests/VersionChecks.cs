@@ -30,6 +30,10 @@ internal static class VersionChecks
                 "Malformed or ambiguous file version text never becomes an installed release number");
             check(RobloxReleaseLookup.IsReleaseNumber(release) && !RobloxReleaseLookup.IsReleaseNumber("741") &&
                 !RobloxReleaseLookup.IsReleaseNumber(release + "\n"), "Release lookup accepts only an exact four-part version");
+            check(RobloxReleaseLookup.SelectFamily(new[] { "0.741.0.7411058", "0.741.0.7411059", "0.7410.0.74100001" }, "741") == "0.741.0.7411059",
+                "Direct family installation selects its newest exact family, never a similarly prefixed family");
+            check(RobloxReleaseLookup.VerifiedHistory.Any(entry => entry.Release == release && entry.Hash == "version-02c37bc51a384b8f"),
+                "Hidden historical Player hashes retain independently verified package mappings");
             string catalog = "{\"Windows\":\"" + target + "\",\"WindowsResponse\":{\"version\":\"" + release + "\",\"clientVersionUpload\":\"" + target + "\"}}";
             check(RobloxReleaseLookup.ParseCatalog(catalog, release, true).Single() == target,
                 "WEAO numeric lookup verifies the Windows response and its matching build hash");
@@ -134,6 +138,7 @@ internal static class VersionChecks
             string previousFile = File.ReadAllText(App.Settings.FileLocation);
             var finished = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
             var vm = new RobloxVersionArchiveViewModel { RunInstaller = () => { starts++; return finished.Task; }, UpdatePolicyChanged = () => changes++ };
+            vm.CurrentLookup = _ => Task.FromResult(target);
             check(ReferenceEquals(vm.DowngradePreviousCommand, vm.DowngradePreviousCommand),
                 "Rollback reuses its async command so concurrent executions share one running state");
             vm.VersionId = target;
@@ -144,6 +149,7 @@ internal static class VersionChecks
                 !App.Settings.Prop.PauseRobloxUpdates && App.Settings.Prop.StaticDirectory && File.ReadAllText(App.Settings.FileLocation) == previousFile,
                 "Failed version selection save restores every owned setting and cannot launch an installer");
             vm.UseLatestCommand.Execute(null);
+            HistoryChecks.Wait(((IAsyncRelayCommand)vm.UseLatestCommand).ExecutionTask!);
             check(App.Settings.Prop.RobloxPlayerVersionOverride == previous && !App.Settings.Prop.UpdateRoblox &&
                 !App.Settings.Prop.PauseRobloxUpdates && changes == 0,
                 "Use latest cannot report or apply a successful policy change when saving fails");
@@ -166,10 +172,24 @@ internal static class VersionChecks
             check(vm.InstalledBuild == "741 (0.741.0.7411058)\n" + target,
                 "Installed-build display shows the actual Player release family and full number alongside its hash");
             vm.InstalledReleaseReader = installedReader;
+            vm.RunInstaller = () => Task.FromResult(0);
             vm.UseLatestCommand.Execute(null);
+            HistoryChecks.Wait(((IAsyncRelayCommand)vm.UseLatestCommand).ExecutionTask!);
             check(vm.VersionId == "" && App.Settings.Prop.RobloxPlayerVersionOverride == "" && !App.Settings.Prop.PauseRobloxUpdates &&
                 App.Settings.Prop.UpdateRoblox && changes == 2,
-                "Use latest persists and reports the unpinned update policy only after save success");
+                "Install current runs installation and persists the unpinned update policy only after save success");
+            var explicitInstaller = RobloxVersionArchiveViewModel.InstallerStartInfo(target);
+            var explicitArgs = new LaunchSettings(explicitInstaller.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            check(explicitArgs.VersionFlag.Data == target && explicitArgs.NoLaunchFlag.Active && explicitArgs.SkipAppUpdateFlag.Active,
+                "The installer receives the exact resolved hash and cannot replace itself during installation");
+            vm.ReleaseCatalog = () => Task.FromResult(new[] { release });
+            vm.ReleaseLookup = (_, _) => Task.FromResult(target);
+            vm.VersionId = "741";
+            vm.InstallVersionCommand.Execute(null); HistoryChecks.Wait(((IAsyncRelayCommand)vm.InstallVersionCommand).ExecutionTask!);
+            check(vm.VersionId == target && App.Settings.Prop.RobloxPlayerVersionOverride == target,
+                "Typing 741 and clicking Install resolves and installs without requiring dropdown selection");
+            // Restore the latest policy for the cancellation tests below.
+            vm.UseLatestCommand.Execute(null); HistoryChecks.Wait(((IAsyncRelayCommand)vm.UseLatestCommand).ExecutionTask!);
 
             var lookup = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             CancellationToken lookupToken = default;

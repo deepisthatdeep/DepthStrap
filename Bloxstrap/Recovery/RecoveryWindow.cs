@@ -15,10 +15,14 @@ internal sealed class RecoveryWindow : Window
     private readonly StackPanel _actions = new();
     private readonly TextBlock _status = new() { Text = "Ready · Beta", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 0) };
     private bool _busy;
+    internal Func<Window, Action<string>, Task> ResetAction { get; set; }
+    internal Func<Window, Task> MacAction { get; set; } = MacControls.ShowAsync;
+    internal Task ActionTask { get; private set; } = Task.CompletedTask;
     internal string? ManagedInstallationExecutable { get; }
     internal RecoveryWindow(string? installationExecutable = null)
     {
         ManagedInstallationExecutable = installationExecutable;
+        ResetAction = (owner, report) => CompleteUninstallControls.ShowAsync(owner, report, ManagedInstallationExecutable);
         Title = "DepthStrap — Anti Api ( Beta )"; Width = 880; Height = 820; MinWidth = 650; MinHeight = 600;
         WindowStartupLocation = WindowStartupLocation.CenterScreen; Foreground = Brushes.WhiteSmoke; FontFamily = new FontFamily("Segoe UI");
         var buttons = new Style(typeof(Button));
@@ -29,11 +33,10 @@ internal sealed class RecoveryWindow : Window
         var panel = new StackPanel { Margin = new Thickness(28) };
         void Text(string text, double size = 14) => panel.Children.Add(new TextBlock { Text = text, FontSize = size, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
         Text("DepthStrap Anti Api ( Beta )", 26);
-        Text("Review the scope before confirming a reset. Resetting Roblox data signs you out and removes local settings. MAC changes require administrator approval and a supported adapter driver.");
+        Text("Complete reset requests administrator approval, then previews Roblox/Studio files, registry entries, DepthStrap data and Roblox browser cookies together. Close affected apps and browsers before confirming. MAC changes also require administrator approval and a supported driver.");
         Text("Roblox reset and MAC address", 18);
-        AddAction("1. Delete Roblox registry keys and cookies…", () => ResetDialogs.SignInAsync(this, message => _output.Text = message));
-        AddAction("2. Delete Roblox data folders…", () => ResetDialogs.AllDataAsync(this, message => _output.Text = message, ManagedInstallationExecutable));
-        AddAction("3. Spoof MAC address…", () => MacControls.ShowAsync(this));
+        AddAction("1. Complete Roblox reset — files, registry and browser cookies…", () => ResetAction(this, message => _output.Text = message));
+        AddAction("2. Spoof MAC address…", () => MacAction(this));
         _actions.Children.Add(new TextBlock { Text = "Installation and device diagnostics", FontSize = 18, Margin = new Thickness(0, 12, 0, 12) });
         AddAction("Inspect adapters / MAC", () =>
         {
@@ -76,15 +79,22 @@ internal sealed class RecoveryWindow : Window
     private void AddAction(string title, Func<Task> execute)
     {
         var button = new Button { Content = title, Padding = new Thickness(12, 8, 12, 8), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 8) };
-        button.Click += async (_, _) => await RunAsync(execute); _actions.Children.Add(button);
+        button.Click += async (_, _) =>
+        {
+            // Enter through the dispatcher even for programmatic/menu actions;
+            // async previews must resume on the window's UI context.
+            ActionTask = Dispatcher.InvokeAsync(() => RunAsync(execute)).Task.Unwrap();
+            await ActionTask;
+        };
+        _actions.Children.Add(button);
     }
     private async Task RunAsync(Func<Task> execute)
     {
         if (_busy) return;
-        _busy = true; IsEnabled = false; _status.Text = "Working…";
+        _busy = true; _actions.IsEnabled = false; _status.Text = "Working…";
         try { await execute(); _status.Text = "Finished · no report was uploaded or saved automatically"; }
         catch (Exception ex) when (ex is not OutOfMemoryException)
-        { _status.Text = ex.Message; }
-        finally { _busy = false; IsEnabled = true; }
+        { _status.Text = "Could not finish"; _output.Text = ex.Message; }
+        finally { _busy = false; _actions.IsEnabled = true; }
     }
 }

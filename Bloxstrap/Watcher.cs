@@ -177,7 +177,7 @@ namespace Bloxstrap
 
         private async Task ReturnHomeAsync(Process player, string version, bool rejoin)
         {
-            using (var closeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+            using (var closeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(45)))
                 await player.WaitForExitAsync(closeTimeout.Token);
             string nonce = Guid.NewGuid().ToString("N");
             using var launcher = Process.Start(AutoLogHomeHandoff.Launch(BadRegionAutoLog.HomeUri, version, nonce));
@@ -211,7 +211,7 @@ namespace Bloxstrap
             if (!await countdown.Decision || !StillOnHome()) return;
             // Only the Home client created by this handoff is closed; other clients are untouched.
             if (!home.CloseMainWindow()) return;
-            using (var closeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+            using (var closeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(45)))
                 await home.WaitForExitAsync(closeTimeout.Token);
             using var rejoinLauncher = Process.Start(AutoLogHomeHandoff.Launch(BadRegionAutoLog.RejoinUri, version));
             CompetitiveSessionLogger.Write("AUTOLOG: reopening Deepwoken entry place through normal preferred-server selection.");

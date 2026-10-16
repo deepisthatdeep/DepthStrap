@@ -122,6 +122,7 @@ namespace Bloxstrap.UI.Elements.Settings
 
         private void WpfUiWindow_Closing(object sender, CancelEventArgs e)
         {
+            if (App.CompleteUninstallHandoff) return;
             if (App.FastFlags.Changed || App.PendingSettingTasks.Any())
             {
                 var result = Frontend.ShowMessageBox(Strings.Menu_UnsavedChanges, MessageBoxImage.Warning, MessageBoxButton.YesNo);
@@ -141,6 +142,7 @@ namespace Bloxstrap.UI.Elements.Settings
 
         private void WpfUiWindow_Closed(object sender, EventArgs e)
         {
+            if (App.CompleteUninstallHandoff) return;
             if (App.LaunchSettings.TestModeFlag.Active)
                 LaunchHandler.LaunchRoblox(LaunchMode.Player);
             else

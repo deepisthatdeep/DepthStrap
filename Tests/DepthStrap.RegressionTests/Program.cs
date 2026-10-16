@@ -39,6 +39,14 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Length == 3 && args[0] == "--multi-fixture")
+        { MultiInstanceFixtureChecks.Worker(args[1], args[2]); return; }
+        if (args.Length == 2 && args[0] == "--multi-instance-audit")
+        { MultiInstanceFixtureChecks.Run(args[1]); return; }
+        if (args.Length == 3 && args[0] == "--lifetime-fixture")
+        { PlayerLifetimeFixtureChecks.Worker(args[1], args[2]); return; }
+        if (args.Length == 2 && args[0] == "--player-lifetime-audit")
+        { PlayerLifetimeFixtureChecks.RunAsync(args[1]).GetAwaiter().GetResult(); return; }
         if (args.Length == 2 && args[0] == "--probe-coverage-audit")
         {
             ProbeCoverageAudit.RunAsync(args[1]).GetAwaiter().GetResult(); return;
@@ -47,6 +55,8 @@ internal static class Program
         {
             LiveVersionChecks.RunAsync(args[1]).GetAwaiter().GetResult(); return;
         }
+        if (args.Length == 2 && args[0] == "--historical-version-audit")
+        { LiveVersionChecks.RunAsync(args[1], historical: true).GetAwaiter().GetResult(); return; }
         if (args.Length == 2 && args[0] == "--release-options")
         {
             var catalog = RobloxReleaseLookup.GetReleaseCatalogAsync().GetAwaiter().GetResult();
@@ -193,6 +203,7 @@ internal static class Program
             return;
         }
         VerifyCore();
+        PublicNetworkHttpChecks.Run(Check);
         NetworkChecks.Run(Check, args.Contains("--verify-warp-package") ? args[Array.IndexOf(args, "--verify-warp-package") + 1] : null);
         FeatureChecks.Run(Check);
         SystemTuningChecks.Run(Check);

@@ -105,6 +105,19 @@ internal static class RobloxSignInResetTests
             result = racingService.Execute(racingService.Preview(), true);
             check(!result.Complete && result.Cookies == CookieResetResult.Removed && !File.Exists(cookies.Target), "A client starting between operations reports partial completion accurately");
             using (var key = Registry.CurrentUser.OpenSubKey(fixture)) check(key?.ValueCount == 1, "Late client conflict preserves remaining registry data");
+            Registry.CurrentUser.DeleteSubKeyTree(fixture, false);
+            Directory.CreateDirectory(Path.Combine(folder, "LocalStorage"));
+            var both = RobloxSignInReset.ForRoot(folder, registry, () => false);
+            File.WriteAllText(cookies.Target, "synthetic-root-cookie");
+            string nested = Path.Combine(folder, "LocalStorage", "RobloxCookies.dat");
+            File.WriteAllText(nested, "synthetic-localstorage-cookie");
+            var bothPreview = both.Preview();
+            check(bothPreview.LocalStorageCookiePath == nested, "Sign-in preview includes the LocalStorage cookie path");
+            using (var locked = new FileStream(nested, FileMode.Open, FileAccess.Read, FileShare.None))
+                Reject(() => both.Execute(bothPreview, true), "Both cookie locations must pass preflight before either is deleted");
+            check(File.Exists(cookies.Target) && File.Exists(nested), "A locked LocalStorage cookie preserves both sign-in stores");
+            var bothResult = both.Execute(both.Preview(), true);
+            check(bothResult.Complete && !File.Exists(cookies.Target) && !File.Exists(nested), "Production sign-in reset removes both supported cookie locations");
         }
         finally { Registry.CurrentUser.DeleteSubKeyTree(fixture, false); }
     }

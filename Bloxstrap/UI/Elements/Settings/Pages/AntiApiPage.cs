@@ -11,7 +11,7 @@ public sealed class AntiApiPage : Page
         SetResourceReference(ForegroundProperty, "TextFillColorPrimaryBrush");
         var panel = new StackPanel { Margin = new Thickness(20) };
         panel.Children.Add(new TextBlock { Text = "Anti Api ( Beta )", FontSize = 24, Margin = new Thickness(0, 0, 0, 18) });
-        panel.Children.Add(new TextBlock { Text = "Reset Roblox's local data and sign-in files, inspect your installation, or change and restore a supported adapter's MAC address. Review the exact scope before confirming. Windows requests administrator approval for MAC changes.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 18) });
+        panel.Children.Add(new TextBlock { Text = "Complete Roblox reset combines uninstalling Roblox/Studio, deleting their registry and sign-in data, clearing DepthStrap data, and removing Roblox cookies from supported browsers. It requests administrator approval before previewing the combined operation. You can also inspect the installation or change and restore a supported adapter's MAC address.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 18) });
         panel.Children.Add(new TextBlock { Text = "Beta: adapter support depends on its driver. A reset removes local Roblox settings and signs you out. These tools do not guarantee compatibility with third-party software.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 18) });
         var open = new Button { Content = "Open Anti Api ( Beta )", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(16, 8, 16, 8) };
         open.Click += (_, _) =>

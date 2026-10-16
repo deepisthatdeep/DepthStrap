@@ -131,6 +131,8 @@ internal static class SelfTests
         RobloxRegistryResetTests.Run(Check);
         RobloxSignInResetTests.Run(root, Check);
         RobloxFullResetTests.Run(root, Check);
+        CompleteUninstallTests.Run(root, Check);
+        BrowserCookieResetTests.Run(root, Check);
         var inventory = WindowsMacBackend.StartInfo("Inventory", Guid.Empty, null);
         Check(!inventory.UseShellExecute && inventory.Verb == "" && inventory.RedirectStandardOutput && inventory.ArgumentList.Contains("-EncodedCommand"), "Driver inventory is non-elevated and uses the embedded script");
         Check(inventory.ArgumentList.Last().Length < 28000 && Encoding.Unicode.GetString(Convert.FromBase64String(inventory.ArgumentList.Last())).Contains("GZipStream"), "Embedded driver commands stay below the Windows process command-line limit");

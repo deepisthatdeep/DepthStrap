@@ -4,6 +4,63 @@ internal static class RobloxReleaseLookup
 {
     private static readonly object CatalogLock = new();
     private static Task<string[]>? _releaseCatalog;
+    // Official Player packages independently checked against their manifest and
+    // executable metadata. DeployHistory now hides these hashes.
+    internal static readonly (string Release, string Hash)[] VerifiedHistory =
+    [
+        ("0.741.0.7411058", "version-02c37bc51a384b8f"),
+        ("0.742.0.7421053", "version-cec3ad5889b447cf")
+    ];
+    private sealed record CatalogEntry(string Release, string Hash);
+    private static string CatalogPath => Path.Combine(Paths.Cache, "PlayerReleaseCatalog.json");
+    private static IEnumerable<CatalogEntry> KnownReleases()
+    {
+        var entries = VerifiedHistory.Select(entry => new CatalogEntry(entry.Release, entry.Hash)).ToList();
+        try
+        {
+            if (Paths.Initialized && File.Exists(CatalogPath) && new FileInfo(CatalogPath).Length <= 256 * 1024)
+                entries.AddRange((JsonSerializer.Deserialize<CatalogEntry[]>(AtomicFile.ReadText(CatalogPath)) ?? [])
+                    .Where(entry => entry is not null && IsReleaseNumber(entry.Release) && RobloxVersionArchive.IsVersionId(entry.Hash)));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
+        return entries.Distinct().ToArray();
+    }
+    private static void RememberRelease(string json, bool weao)
+    {
+        string? release = ReadCatalogRelease(json, weao);
+        if (!Paths.Initialized || release is null) return;
+        try
+        {
+            using var gate = new InterProcessLock("PlayerReleaseCatalog", TimeSpan.FromSeconds(2));
+            if (!gate.IsAcquired) return;
+            var entries = ParseCatalog(json, release, weao).Select(hash => new CatalogEntry(release, hash))
+                .Concat(KnownReleases()).Distinct().Take(256).ToArray();
+            Directory.CreateDirectory(Paths.Cache);
+            AtomicFile.WriteText(CatalogPath, JsonSerializer.Serialize(entries));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Metadata caching cannot block installation. */ }
+    }
+
+    internal static bool IsReleaseFamily(string value) => Regex.IsMatch(value, @"\A[0-9]{2,10}\z", RegexOptions.CultureInvariant);
+
+    internal static string SelectFamily(IEnumerable<string> releases, string family)
+    {
+        if (!IsReleaseFamily(family)) throw new ArgumentException("Enter a release family such as 741.");
+        return releases.Where(IsReleaseNumber).Where(release => release.Split('.')[1] == family)
+            .OrderByDescending(release => string.Join(".", release.Split('.').Select(part => part.PadLeft(10, '0'))), StringComparer.Ordinal)
+            .FirstOrDefault() ?? throw new InvalidDataException("No Windows Player release was found for " + family + ". Choose a listed release or paste a build hash.");
+    }
+
+    internal static async Task<string> GetCurrentAsync(CancellationToken token)
+    {
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20), MaxResponseContentBufferSize = 64 * 1024 };
+        string json = await client.GetStringAsync("https://clientsettingscdn.roblox.com/v2/client-version/WindowsPlayer/channel/LIVE", token).ConfigureAwait(false);
+        RememberRelease(json, false);
+        string release = ReadCatalogRelease(json, false) ?? throw new InvalidDataException("Roblox did not return a valid current Windows Player release.");
+        return SelectExact(ParseCatalog(json, release, false));
+    }
+
+    internal static void RefreshCatalog() { lock (CatalogLock) _releaseCatalog = null; }
 
     internal static string? ReadCatalogRelease(string json, bool weao)
     {
@@ -21,7 +78,7 @@ internal static class RobloxReleaseLookup
         client.DefaultRequestHeaders.UserAgent.ParseAdd("WEAO-3PService DepthStrap/" + App.Version);
         async Task<string?> Read(string url, bool weao)
         {
-            try { return ReadCatalogRelease(await client.GetStringAsync(url).ConfigureAwait(false), weao); }
+            try { string json = await client.GetStringAsync(url).ConfigureAwait(false); RememberRelease(json, weao); return ReadCatalogRelease(json, weao); }
             catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException) { return null; }
         }
         var current = Read("https://clientsettingscdn.roblox.com/v2/client-version/WindowsPlayer/channel/LIVE", false);
@@ -30,9 +87,10 @@ internal static class RobloxReleaseLookup
         return (await current, await previous);
     }
 
-    internal static string[] ParseReleaseHistory(string text) => Regex.Matches(text,
+    internal static string[] ParseReleaseHistory(string text, bool requireHash = false) => Regex.Matches(text,
         @"^New (?:WindowsPlayer|Client) version-(?:[a-fA-F0-9]{16}|hidden) at [^\r\n]*?file version: ([0-9]+),\s*([0-9]+),\s*([0-9]+),\s*([0-9]+)(?:,|\s|$)",
         RegexOptions.Multiline | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(2))
+        .Where(match => !requireHash || !match.Value.Contains("version-hidden ", StringComparison.Ordinal))
         .Select(match => string.Join(".", Enumerable.Range(1, 4).Select(i => match.Groups[i].Value)))
         .Where(IsReleaseNumber).Distinct(StringComparer.Ordinal).ToArray();
 
@@ -78,7 +136,8 @@ internal static class RobloxReleaseLookup
             try
             {
                 string content = await client.GetStringAsync(source.Url).ConfigureAwait(false);
-                if (source.Kind == 2) return ParseReleaseHistory(content);
+                if (source.Kind == 2) return ParseReleaseHistory(content, requireHash: true);
+                RememberRelease(content, source.Kind == 1);
                 using var document = JsonDocument.Parse(content);
                 var root = document.RootElement;
                 if (source.Kind == 1 && (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("WindowsResponse", out root))) return Array.Empty<string>();
@@ -89,7 +148,7 @@ internal static class RobloxReleaseLookup
             catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or RegexMatchTimeoutException)
             { return Array.Empty<string>(); }
         })).ConfigureAwait(false);
-        var releases = results.SelectMany(result => result).Distinct(StringComparer.Ordinal).ToArray();
+        var releases = results.SelectMany(result => result).Concat(KnownReleases().Select(entry => entry.Release)).Distinct(StringComparer.Ordinal).ToArray();
         if (releases.Length == 0) throw new InvalidDataException("The Player release catalog was empty.");
         return releases;
     }
@@ -138,6 +197,7 @@ internal static class RobloxReleaseLookup
     {
         if (!IsReleaseNumber(release)) throw new ArgumentException("Enter a full four-part Roblox release number.", nameof(release));
         var candidates = new List<string>();
+        candidates.AddRange(KnownReleases().Where(entry => entry.Release == release).Select(entry => entry.Hash));
         foreach (string hash in RobloxVersionArchive.InstalledPlayerVersions())
         {
             token.ThrowIfCancellationRequested();
@@ -163,6 +223,7 @@ internal static class RobloxReleaseLookup
             try
             {
                 string content = await client.GetStringAsync(source.Url, deadline.Token);
+                if (source.Kind != 2) RememberRelease(content, source.Kind == 1);
                 string[] found = (source.Kind == 2 ? ParseHistory(content, release) : ParseCatalog(content, release, source.Kind == 1)).ToArray();
                 return (Success: true, Matches: found);
             }

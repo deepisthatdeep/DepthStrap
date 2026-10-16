@@ -7,8 +7,9 @@ namespace Bloxstrap.UI.ViewModels.Settings
 {
     public sealed class RobloxVersionArchiveViewModel : NotifyPropertyChangedViewModel
     {
-        private readonly AsyncRelayCommand _downgrade, _install;
-        private readonly RelayCommand _latest, _refresh, _cancel;
+        private readonly AsyncRelayCommand _downgrade, _install, _latest;
+        private readonly RelayCommand _refresh, _cancel;
+        private string? _installTarget;
         private CancellationTokenSource? _lookupCancellation;
         private bool _busy;
         private int _suggestionRevision;
@@ -35,7 +36,8 @@ namespace Bloxstrap.UI.ViewModels.Settings
         public Action? UpdatePolicyChanged { get; set; }
         internal Func<CancellationToken, Task<string>> PreviousLookup { get; set; } = WeaoDowngradeSource.GetPreviousAsync;
         internal Func<string, CancellationToken, Task<string>> ReleaseLookup { get; set; } = RobloxReleaseLookup.ResolveAsync;
-        internal Func<Task<int>> RunInstaller { get; set; } = RunInstallerAsync;
+        internal Func<CancellationToken, Task<string>> CurrentLookup { get; set; } = RobloxReleaseLookup.GetCurrentAsync;
+        internal Func<Task<int>> RunInstaller { get; set; }
         public ObservableCollection<string> CachedVersions { get; } = new();
         private DistributionState? _installed;
         public string InstalledBuild => _installed is null ? "Unavailable" :
@@ -143,9 +145,10 @@ namespace Bloxstrap.UI.ViewModels.Settings
 
         public RobloxVersionArchiveViewModel()
         {
+            RunInstaller = () => RunInstallerAsync(_installTarget);
             _downgrade = new(DowngradePreviousAsync, () => !_busy);
             _install = new(InstallAsync, () => !_busy);
-            _latest = new(UseLatest, () => !_busy);
+            _latest = new(UseLatestAsync, () => !_busy);
             _refresh = new(RefreshVersions, () => !_busy);
             _cancel = new(CancelLookup, () => _lookupCancellation is not null);
             OpenDowngradeSourceCommand = new RelayCommand(() => Utilities.ShellExecute(WeaoDowngradeSource.DownloadLink(VersionId)));
@@ -205,6 +208,14 @@ namespace Bloxstrap.UI.ViewModels.Settings
             try
             {
                 string requested = VersionId.Trim();
+                if (RobloxReleaseLookup.IsReleaseFamily(requested))
+                {
+                    using var familyCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    _lookupCancellation = familyCancellation; _cancel.NotifyCanExecuteChanged();
+                    Status = "Finding the newest Windows Player release in " + requested + "…";
+                    requested = RobloxReleaseLookup.SelectFamily(await ReleaseCatalog().WaitAsync(familyCancellation.Token), requested);
+                    familyCancellation.Token.ThrowIfCancellationRequested();
+                }
                 if (RobloxReleaseLookup.IsReleaseNumber(requested))
                 {
                     using var cancellation = new CancellationTokenSource();
@@ -226,7 +237,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
             finally { _lookupCancellation = null; SetBusy(false); }
         }
 
-        private async Task InstallCoreAsync(string requested)
+        private async Task InstallCoreAsync(string requested, bool latest = false)
         {
             string version = requested.Trim().ToLowerInvariant();
             if (!RobloxVersionArchive.IsVersionId(version))
@@ -235,16 +246,19 @@ namespace Bloxstrap.UI.ViewModels.Settings
                 return;
             }
             if (!CanInstall()) return;
-            SaveSelection(version, latest: false);
+            SaveSelection(latest ? "" : version, latest);
             UpdatePolicyChanged?.Invoke();
             Status = "Installing " + version + ". Downgrade source: rdd.weao.gg (WEAO RDD). Packages come from Roblox and are verified against its manifest.";
-            int exitCode = await RunInstaller();
+            _installTarget = version;
+            int exitCode;
+            try { exitCode = await RunInstaller(); }
+            finally { _installTarget = null; }
             bool refreshed = TryRefreshVersions();
             if (exitCode != 0)
-                Status = "Installer exited with code " + exitCode + ". The saved version selection remains pinned; retry or select Use latest.";
+                Status = "Installer exited with code " + exitCode + ". Retry installation before launching.";
             else if (refreshed && _installed is { InstallationPending: false } &&
                 string.Equals(_installed.VersionGuid, version, StringComparison.OrdinalIgnoreCase) && CachedVersions.Contains(version))
-                Status = "Installer finished for " + version + ". The selected build remains pinned. Launch Roblox when ready.";
+                Status = "Installer finished for " + version + (latest ? ". Current release installed; automatic Roblox updates are enabled." : ". The selected build remains pinned.") + " Launch Roblox when ready.";
             else
                 Status = "The installer returned success, but the selected build could not be confirmed. Refresh builds or retry installation before launching.";
         }
@@ -256,7 +270,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
             settings.RobloxPlayerVersionOverride = version;
             settings.PauseRobloxUpdates = !latest;
             if (latest) settings.UpdateRoblox = true;
-            else settings.StaticDirectory = false;
+            settings.StaticDirectory = false;
             try { Networking.AdaptiveRegionService.SaveUserSettings(); }
             catch
             {
@@ -265,20 +279,33 @@ namespace Bloxstrap.UI.ViewModels.Settings
             }
         }
 
-        private void UseLatest()
+        private async Task UseLatestAsync()
         {
-            if (_busy) return;
+            if (_busy || !CanInstall()) return;
+            SetBusy(true);
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            _lookupCancellation = cancellation; _cancel.NotifyCanExecuteChanged();
             try
             {
-                SaveSelection("", latest: true);
+                Status = "Getting the current Windows Player build from Roblox…";
+                string version = await CurrentLookup(cancellation.Token);
+                cancellation.Token.ThrowIfCancellationRequested();
+                _lookupCancellation = null; _cancel.NotifyCanExecuteChanged();
+                await InstallCoreAsync(version, latest: true);
                 SetVersion("");
-                Status = "Latest Roblox release selected. Launch Roblox to install it.";
-                UpdatePolicyChanged?.Invoke();
             }
-            catch (Exception ex) { Status = "Could not save the latest-version selection: " + ex.Message; }
+            catch (OperationCanceledException) { Status = "Current release lookup cancelled. No installation was started."; }
+            catch (Exception ex) { Status = "Could not install the current Roblox release: " + ex.Message; }
+            finally { _lookupCancellation = null; SetBusy(false); }
         }
 
-        private void RefreshVersions() => TryRefreshVersions();
+        private void RefreshVersions()
+        {
+            TryRefreshVersions();
+            RobloxReleaseLookup.RefreshCatalog();
+            _ = LoadReleaseLabelsAsync();
+            _ = UpdateSuggestionsAsync();
+        }
 
         private bool TryRefreshVersions()
         {
@@ -304,11 +331,12 @@ namespace Bloxstrap.UI.ViewModels.Settings
             }
         }
 
-        internal static ProcessStartInfo InstallerStartInfo() => new(Paths.Application, "-player -force -nolaunch") { UseShellExecute = false };
+        internal static ProcessStartInfo InstallerStartInfo(string? version = null) => new(Paths.Application,
+            "-player -force -nolaunch -skipappupdate" + (RobloxVersionArchive.IsVersionId(version) ? " -version " + version : "")) { UseShellExecute = false, WorkingDirectory = Paths.Base };
 
-        private static async Task<int> RunInstallerAsync()
+        private static async Task<int> RunInstallerAsync(string? version)
         {
-            using var installer = Process.Start(InstallerStartInfo());
+            using var installer = Process.Start(InstallerStartInfo(version));
             if (installer is null) throw new IOException("The Roblox installer could not be started.");
             await installer.WaitForExitAsync();
             return installer.ExitCode;
