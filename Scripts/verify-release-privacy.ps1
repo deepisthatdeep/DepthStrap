@@ -1,6 +1,6 @@
 param([string]$Version='1.3')
 $ErrorActionPreference='Stop'
-$privateEmails = @(& git log depthstrap/main --format='%ae%n%ce' | Where-Object { $_ -match '@yahoo\.|@hotmail\.|@outlook\.' } | Sort-Object -Unique)
+$privateEmails = @(& git log HEAD --format='%ae%n%ce' | Where-Object { $_ -match '@yahoo\.|@hotmail\.|@outlook\.' } | Sort-Object -Unique)
 $needles = @($env:USERNAME, $env:USERPROFILE, $env:USERPROFILE.Replace('\','/')) + $privateEmails
 $needles = @($needles | Where-Object { $_ -and $_.Length -ge 4 } | Sort-Object -Unique)
 $needles += @(Get-Content -LiteralPath (Join-Path $PWD '.git/privacy-denylist.txt') | Where-Object { $_ -and $_.Length -ge 4 })

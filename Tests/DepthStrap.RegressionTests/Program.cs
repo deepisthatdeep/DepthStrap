@@ -344,7 +344,7 @@ internal static class Program
     private static void RunFixChecks()
     {
         Console.WriteLine("Checking normal uninstall outcomes");
-        NormalUninstallChecks.Run(Paths.Base, Check);
+        NormalUninstallChecks.Run(Check);
         Console.WriteLine("Checking post-launch process lifetime");
         PostLaunchProcessChecks.Run(Check);
         Console.WriteLine("Checking settings changes and channel requests");
