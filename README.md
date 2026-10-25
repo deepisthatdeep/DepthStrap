@@ -1,6 +1,6 @@
-# DepthStrap 1.2.4
+# DepthStrap 1.3
 
-## UI and reliability review candidate — October 25, 2026
+## Version 1.3 — UI and reliability update
 
 This review build enhances the existing Crimson Contract artwork with a framed banner, readable settings surfaces, a clearer action bar, and responsive setting rows. Detailed Roblox settings are grouped in expandable sections. All seven settings destinations, Player/Studio launch choices, and existing theme choices remain available. The app settings label and window title now read **DepthStrap**.
 
@@ -8,7 +8,7 @@ This review build enhances the existing Crimson Contract artwork with a framed b
 
 All eight [audit proposals](docs/ui-review-2026-10-25/DepthStrap-audit.txt) are implemented. Normal uninstall reports partial or pending removal and preserves unknown shortcuts/files. App-only edits trigger discard confirmation. Channel lookups cancel superseded requests and finish with a result or error. Closed history windows detach subscriptions. FastFlags exports replace files atomically. Deferred app updates show versions and diagnostics. Post-launch helpers verify process identity and handle early exits normally. Network comparison shows its prerequisite and reports expected refusals without error stacks.
 
-The [verification record](docs/ui-review-2026-10-25/verification.txt) covers 1,021 app regression checks, including 80 focused fix checks, plus 289 recovery checks and 44 simulated adapter checks. The executable retains version 1.2.4; this branch is a review candidate, not a new stable release. Updating source alone does not update installed copies.
+The [verification record](docs/ui-review-2026-10-25/verification.txt) covers 1,021 app regression checks, including 80 focused fix checks, plus 289 recovery checks and 44 simulated adapter checks. This update is registered as version **1.3**. The branch remains a review candidate until merged and released. A future stable release should use tag `v1.3.0`, which existing updaters recognize as version 1.3. Updating source alone does not update installed copies.
 
 Use the source build and isolated checks below to review the candidate. No real uninstall, WARP switch, physical adapter change, or Roblox gameplay was performed. Delayed executable removal is explicitly reported as unverified until it finishes; the historical update failures do not prove a specific lock, antivirus or permissions cause.
 

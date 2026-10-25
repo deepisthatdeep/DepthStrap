@@ -3,8 +3,11 @@ October 25, 2026
 
 Base: main 71a4d3a2b7240aaa52d5426a6a287e7a862ce81c; initial UI commit 05f09f3.
 Candidate: codex/crimson-ui-reaudit, PR #7.
-Executable: version 1.2.4, unchanged; no new stable release.
+Executable: version 1.3; assembly 1.3.0.0. No stable release published. Future updater-compatible release tag: v1.3.0.
 SDK: .NET 10.0.401 on Windows.
+
+Version registration
+Version 1.3 uses assembly version 1.3.0.0 and file/product labels 1.3. Release/package script defaults and README were updated together. The previous full regression/recovery results below precede this version-only bump; the Release build and 127 updater checks were rerun successfully for 1.3. The updater fixture now restores its normalized stable tag rather than deriving it from a two-part display label.
 
 Completed checks
 PASS — Full Release solution build: 0 warnings, 0 errors.

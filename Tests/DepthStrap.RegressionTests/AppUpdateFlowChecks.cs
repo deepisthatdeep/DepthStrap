@@ -170,9 +170,10 @@ internal static class AppUpdateFlowChecks
                 "Failed release check records the installed version without inventing the incoming version");
             f.ApiStatus = HttpStatusCode.OK;
             f.Runtime = f.Runtime with { CurrentVersion = App.Version };
+            string currentTag = f.Tag;
             f.Tag = "invalid-release";
             check(!f.Run() && f.Deferred is not null, "Invalid release metadata cannot clear a previous deferred notice");
-            f.Tag = "v" + App.Version;
+            f.Tag = currentTag;
             check(!f.Run() && f.Deferred is null, "A valid current stable release clears a previous failed-check notice");
         }
         using (var f = new Fixture())

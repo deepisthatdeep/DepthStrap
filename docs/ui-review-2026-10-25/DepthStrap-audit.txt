@@ -3,7 +3,7 @@ October 25, 2026
 
 Scope
 Normal DepthStrap at https://github.com/deepisthatdeep/DepthStrap.
-Base: main commit 71a4d3a, version 1.2.4. This is a review branch, not a new stable release.
+Base: main commit 71a4d3a, version 1.2.4. This update is registered as version 1.3 on the review branch.
 The existing Crimson Contract art remains. All seven destinations and themes remain. The app settings label and window title now read DepthStrap.
 
 Historical evidence
@@ -44,4 +44,4 @@ The running-game prerequisite appears beside the action and in the comparison di
 Proof: injected running-player and occupied-operation gate cases, unchanged calibration sentinel, one status log, gate release and matching prerequisite copy. No real route or adapter changes occurred.
 
 Verification and limits
-See verification.txt. Tests cover controlled inputs, disposable files/registry keys and simulated adapters. WPF renders check layout and bindings; they are not live installed-app screenshots. Native gameplay, actual installation/uninstall, WARP switching, physical adapter changes and mixed-DPI monitor behavior remain unverified. The executable remains unsigned and version 1.2.4. The full production release gate has not been run, and no stable release is published by this source update.
+See verification.txt. Tests cover controlled inputs, disposable files/registry keys and simulated adapters. WPF renders check layout and bindings; they are not live installed-app screenshots. Native gameplay, actual installation/uninstall, WARP switching, physical adapter changes and mixed-DPI monitor behavior remain unverified. The executable remains unsigned and is version 1.3. The full production release gate has not been run, and no stable release is published by this source update.
