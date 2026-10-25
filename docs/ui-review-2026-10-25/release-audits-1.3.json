@@ -1,0 +1,219 @@
+{
+  "version": "1.3",
+  "releaseTag": "v1.3.0",
+  "audits": [
+    {
+      "pass": 1,
+      "groups": [
+        {
+          "Name": "Source whitespace and PowerShell syntax",
+          "Passed": true,
+          "Seconds": 0.11
+        },
+        {
+          "Name": "Full solution build",
+          "Passed": true,
+          "Seconds": 15.04
+        },
+        {
+          "Name": "App-wide regressions and theme layouts",
+          "Passed": true,
+          "Seconds": 144.6
+        },
+        {
+          "Name": "Toolkit reset and simulated MAC transactions",
+          "Passed": true,
+          "Seconds": 4.75
+        },
+        {
+          "Name": "Toolkit navigation and background synchronization",
+          "Passed": true,
+          "Seconds": 6.89
+        },
+        {
+          "Name": "Embedded Store servicing error paths",
+          "Passed": true,
+          "Seconds": 0.95
+        },
+        {
+          "Name": "Adapter provider fixtures",
+          "Passed": true,
+          "Seconds": 0.3
+        },
+        {
+          "Name": "Socket binding fixtures",
+          "Passed": true,
+          "Seconds": 0.07
+        },
+        {
+          "Name": "Read-only actual device and profile discovery",
+          "Passed": true,
+          "Seconds": 60.46
+        },
+        {
+          "Name": "Live public network loading",
+          "Passed": true,
+          "Seconds": 1.97
+        },
+        {
+          "Name": "Actual current and downgrade package verification",
+          "Passed": true,
+          "Seconds": 8.49
+        },
+        {
+          "Name": "Public build boundaries",
+          "Passed": true,
+          "Seconds": 0.65
+        },
+        {
+          "Name": "Public package boundaries",
+          "Passed": true,
+          "Seconds": 0.27
+        },
+        {
+          "Name": "Disposable Git privacy fixtures",
+          "Passed": true,
+          "Seconds": 7.98
+        },
+        {
+          "Name": "Dependency vulnerability check",
+          "Passed": true,
+          "Seconds": 1.56
+        },
+        {
+          "Name": "Packaged app and elevated helper handoff",
+          "Passed": true,
+          "Seconds": 0.18
+        },
+        {
+          "Name": "Release privacy and SHA256 verification",
+          "Passed": true,
+          "Seconds": 2.6
+        },
+        {
+          "Name": "Approved release source presence",
+          "Passed": true,
+          "Seconds": 0.32
+        },
+        {
+          "Name": "Clean extracted source solution build",
+          "Passed": true,
+          "Seconds": 24.39
+        },
+        {
+          "Name": "Real isolated multi-instance and window lifetime",
+          "Passed": true,
+          "Seconds": 45.36
+        }
+      ]
+    },
+    {
+      "pass": 2,
+      "groups": [
+        {
+          "Name": "Source whitespace and PowerShell syntax",
+          "Passed": true,
+          "Seconds": 0.12
+        },
+        {
+          "Name": "Full solution build",
+          "Passed": true,
+          "Seconds": 21.63
+        },
+        {
+          "Name": "App-wide regressions and theme layouts",
+          "Passed": true,
+          "Seconds": 146.07
+        },
+        {
+          "Name": "Toolkit reset and simulated MAC transactions",
+          "Passed": true,
+          "Seconds": 4.76
+        },
+        {
+          "Name": "Toolkit navigation and background synchronization",
+          "Passed": true,
+          "Seconds": 7.63
+        },
+        {
+          "Name": "Embedded Store servicing error paths",
+          "Passed": true,
+          "Seconds": 0.94
+        },
+        {
+          "Name": "Adapter provider fixtures",
+          "Passed": true,
+          "Seconds": 0.3
+        },
+        {
+          "Name": "Socket binding fixtures",
+          "Passed": true,
+          "Seconds": 0.07
+        },
+        {
+          "Name": "Read-only actual device and profile discovery",
+          "Passed": true,
+          "Seconds": 39.05
+        },
+        {
+          "Name": "Live public network loading",
+          "Passed": true,
+          "Seconds": 2.01
+        },
+        {
+          "Name": "Actual current and downgrade package verification",
+          "Passed": true,
+          "Seconds": 10.11
+        },
+        {
+          "Name": "Public build boundaries",
+          "Passed": true,
+          "Seconds": 0.64
+        },
+        {
+          "Name": "Public package boundaries",
+          "Passed": true,
+          "Seconds": 0.28
+        },
+        {
+          "Name": "Disposable Git privacy fixtures",
+          "Passed": true,
+          "Seconds": 8.33
+        },
+        {
+          "Name": "Dependency vulnerability check",
+          "Passed": true,
+          "Seconds": 1.14
+        },
+        {
+          "Name": "Packaged app and elevated helper handoff",
+          "Passed": true,
+          "Seconds": 0.18
+        },
+        {
+          "Name": "Release privacy and SHA256 verification",
+          "Passed": true,
+          "Seconds": 2.94
+        },
+        {
+          "Name": "Approved release source presence",
+          "Passed": true,
+          "Seconds": 0.39
+        },
+        {
+          "Name": "Clean extracted source solution build",
+          "Passed": true,
+          "Seconds": 25.59
+        },
+        {
+          "Name": "Large uninstall and historical release families",
+          "Passed": true,
+          "Seconds": 31.58
+        }
+      ]
+    }
+  ],
+  "nativeAdministratorChecks": 24,
+  "realUserDataModified": false,
+  "auditedProductGitTree": "4ca7893f179727734abd8129f53161c715d46213"
+}

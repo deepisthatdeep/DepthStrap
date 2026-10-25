@@ -7,9 +7,10 @@ using Microsoft.Win32;
 
 internal static class NormalUninstallChecks
 {
-    internal static void Run(string root, Action<bool, string> check)
+    internal static void Run(Action<bool, string> check)
     {
-        string fixture = Path.Combine(root, "normal-uninstall-" + Guid.NewGuid().ToString("N"));
+        // Keep shortcut targets within their fixed environment-target field even in deeply nested audit folders.
+        string fixture = Path.Combine(Path.GetTempPath(), "DepthStrap-normal-uninstall-" + Guid.NewGuid().ToString("N"));
         string desktop = Path.Combine(fixture, "Desktop");
         Directory.CreateDirectory(desktop);
         string application = Path.Combine(fixture, "DepthStrap.exe");
