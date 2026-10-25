@@ -1,5 +1,19 @@
 # DepthStrap 1.2.4
 
+## UI review candidate — October 25, 2026
+
+This local review build enhances the existing Crimson Contract artwork with a framed banner, readable settings surfaces, a clearer action bar, and responsive setting rows. Detailed Roblox settings are grouped in expandable sections. All seven settings destinations, Player/Studio launch choices, and existing theme choices remain available.
+
+![Enhanced Crimson Contract settings UI](docs/ui-review-2026-10-25/DepthStrap-Crimson-UI.png)
+
+The [audit and ranked fixes](docs/ui-review-2026-10-25/DepthStrap-audit.txt) and [verification record](docs/ui-review-2026-10-25/verification.txt) accompany this change. Validation passed 935 app regression checks, 289 recovery checks, and 44 simulated adapter checks. The source archive also builds independently.
+
+The executable retains version 1.2.4; this is not a new public release. The accompanying audit identifies existing issues with normal-uninstall success reporting, unsaved app settings, channel lookup completion, server-history subscriptions, and FastFlags exports. Those backend fixes are proposals and are not included in this UI candidate. Do not interpret passing regression checks as proof that these known issues are resolved.
+
+Use the source build and isolated checks below to review the candidate. No real uninstall, WARP switch, adapter change, or Roblox gameplay was performed for this UI review.
+
+## Published 1.2.4 behavior
+
 Version 1.2.4 fixes the Complete wipe discovery error `The parameter is incorrect: '\\.\nul'`. Literal reserved-name files are scanned in the extended file namespace, without opening Windows device aliases. Actual failure details also appear beside the wipe action instead of only a generic retry status.
 
 Version 1.2.3 gives Anti Api one administrator-approved Complete wipe action for every registered Windows user. Accept permanent deletion and type `WIPE ROBLOX`; the action checks its supported scope and then deletes it without a separate preview/save step. It uninstalls known Roblox Player/Studio installations and Store packages, removes identified Roblox/DepthStrap data and registrations, and retains only the exact original installed DepthStrap.exe. Discovered saved Studio projects and models are permanently deleted. Roblox cookies are removed from supported browser cookie databases and Firefox recovery files, while other sites' cookies and saved browser tabs remain. Close supported browsers, including their background processes, before starting. Offline registry loading has a fallback and reports native Windows errors; deletion no longer requests ownership/ACL modification rights. Standard Windows compatibility junctions are recognized without following them, and unresolved locations detected during final verification prevent a success result. Unsupported, locked, redirected or unreviewed locations produce an error or incomplete result. Unlisted copies, custom browser locations, Windows logs, cloud data and external backups are outside this reset.

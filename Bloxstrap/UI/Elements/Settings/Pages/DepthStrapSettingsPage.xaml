@@ -30,7 +30,7 @@
                 <ui:ToggleSwitch IsChecked="{Binding AutomaticDepthStrapUpdates, Mode=TwoWay}" />
             </controls:OptionControl>
 
-            <controls:OptionControl Header="Save And Launch Action" Description="Adds an option so whenever clicking save and launch, it will ask if to studio or player.">
+            <controls:OptionControl Header="Launch Player directly" Description="Save &amp; Launch opens Roblox Player when enabled. Turn this off to choose Player or Studio each time.">
                 <ui:ToggleSwitch IsChecked="{Binding SaveAndLaunchToPlayer, Mode=TwoWay}" />
             </controls:OptionControl>
 

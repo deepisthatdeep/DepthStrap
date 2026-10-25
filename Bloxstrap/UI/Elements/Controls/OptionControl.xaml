@@ -8,22 +8,26 @@
              xmlns:resources="clr-namespace:Bloxstrap.Resources"
              xmlns:local="clr-namespace:Bloxstrap.UI.Elements.Controls"
              mc:Ignorable="d" 
-             x:Name="Control"
+             x:Name="Control" SizeChanged="Control_SizeChanged"
              d:DesignHeight="450" d:DesignWidth="800">
     <ui:Card Margin="0,8,0,0">
         <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+            <StackPanel x:Name="DescriptionPanel" Grid.Column="0" VerticalAlignment="Center">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" FontSize="14" Text="{Binding Header, ElementName=Control}" />
+                    <TextBlock Grid.Column="0" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" Text="{Binding Header, ElementName=Control}" />
                     <TextBlock Grid.Column="1" Margin="4,0,0,0">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
@@ -71,7 +75,7 @@
                 </local:MarkdownTextBlock>
             </StackPanel>
 
-            <ContentControl Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0" Content="{Binding InnerContent, ElementName=Control}" />
+            <ContentControl x:Name="Editor" Grid.Column="1" VerticalAlignment="Center" Margin="20,0,0,0" Content="{Binding InnerContent, ElementName=Control}" />
         </Grid>
     </ui:Card>
 </UserControl>

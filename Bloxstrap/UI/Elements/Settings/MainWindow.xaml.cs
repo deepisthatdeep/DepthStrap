@@ -78,24 +78,55 @@ namespace Bloxstrap.UI.Elements.Settings
 
         public void LoadState()
         {
-            if (_state.Left > SystemParameters.VirtualScreenWidth)
-                _state.Left = 0;
-
-            if (_state.Top > SystemParameters.VirtualScreenHeight)
-                _state.Top = 0;
-
-            if (_state.Width > 0)
-                this.Width = _state.Width;
-
-            if (_state.Height > 0)
-                this.Height = _state.Height;
-
-            if (_state.Left > 0 && _state.Top > 0)
+            // The app uses WPF system DPI awareness, so all screen coordinates share the primary scale.
+            double scale = UI.Utility.WindowScaling.ScaleFactor;
+            var workAreas = new List<Rect> { SystemParameters.WorkArea };
+            foreach (var screen in System.Windows.Forms.Screen.AllScreens.Where(screen => !screen.Primary))
             {
-                this.WindowStartupLocation = WindowStartupLocation.Manual;
-                this.Left = _state.Left;
-                this.Top = _state.Top;
+                var area = screen.WorkingArea;
+                workAreas.Add(new Rect(area.X / scale, area.Y / scale, area.Width / scale, area.Height / scale));
             }
+            var bounds = FitWindowBounds(_state, workAreas);
+            MinWidth = Math.Min(960, bounds.Width);
+            MinHeight = Math.Min(600, bounds.Height);
+            Width = bounds.Width;
+            Height = bounds.Height;
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = bounds.Left;
+            Top = bounds.Top;
+        }
+
+        internal static Rect FitWindowBounds(Models.Persistable.WindowState state, IReadOnlyList<Rect> workAreas)
+        {
+            var workArea = workAreas[0];
+            bool savedPosition = double.IsFinite(state.Left) && double.IsFinite(state.Top) &&
+                double.IsFinite(state.Width) && state.Width > 0 && double.IsFinite(state.Height) && state.Height > 0;
+            if (savedPosition)
+            {
+                var saved = new Rect(state.Left, state.Top, state.Width, state.Height);
+                double bestOverlap = -1, bestDistance = double.PositiveInfinity;
+                foreach (var candidate in workAreas)
+                {
+                    var intersection = Rect.Intersect(saved, candidate);
+                    double overlap = intersection.IsEmpty ? 0 : intersection.Width * intersection.Height;
+                    double dx = state.Left - Math.Clamp(state.Left, candidate.Left, candidate.Right);
+                    double dy = state.Top - Math.Clamp(state.Top, candidate.Top, candidate.Bottom);
+                    double distance = dx * dx + dy * dy;
+                    if (overlap > bestOverlap || (overlap == bestOverlap && distance < bestDistance))
+                    {
+                        workArea = candidate;
+                        bestOverlap = overlap;
+                        bestDistance = distance;
+                    }
+                }
+            }
+            double width = Math.Clamp(double.IsFinite(state.Width) && state.Width > 0 ? state.Width : 1280,
+                Math.Min(960, workArea.Width), workArea.Width);
+            double height = Math.Clamp(double.IsFinite(state.Height) && state.Height > 0 ? state.Height : 800,
+                Math.Min(600, workArea.Height), workArea.Height);
+            double left = savedPosition ? Math.Clamp(state.Left, workArea.Left, workArea.Right - width) : workArea.Left + (workArea.Width - width) / 2;
+            double top = savedPosition ? Math.Clamp(state.Top, workArea.Top, workArea.Bottom - height) : workArea.Top + (workArea.Height - height) / 2;
+            return new Rect(left, top, width, height);
         }
 
         private async void ShowAlreadyRunningSnackbar()
@@ -159,8 +190,8 @@ namespace Bloxstrap.UI.Elements.Settings
             {
                 var menu = LaunchButton.ContextMenu;
                 menu.PlacementTarget = LaunchButton;
-                menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Center;
-                menu.VerticalOffset = 50;
+                menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top;
+                menu.VerticalOffset = -4;
                 menu.IsOpen = true;
             }
         }

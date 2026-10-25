@@ -194,6 +194,15 @@ internal static class Program
         var bindingErrors = new BindingErrors();
         PresentationTraceSources.DataBindingSource.Switch.Level = SourceLevels.Error;
         PresentationTraceSources.DataBindingSource.Listeners.Add(bindingErrors);
+        if (args.Contains("--layout-only"))
+        {
+            VerifyThemes(app);
+            OptionLayoutChecks.Run(Check);
+            ShellLayoutChecks.Run(Check, Path.GetDirectoryName(output)!, SaveVisual);
+            Check(bindingErrors.Messages.Count == 0, "Layout binding errors: " + string.Join("\n", bindingErrors.Messages.Take(12)));
+            Console.WriteLine($"PASS: {_checks} theme and responsive layout checks");
+            return;
+        }
         if (args.Contains("--popup-only"))
         {
             VerifyThemes(app);
@@ -225,6 +234,8 @@ internal static class Program
         ReliabilityAuditChecks.Run(Check);
         HistoryChecks.Run(Check);
         VerifyThemes(app);
+        OptionLayoutChecks.Run(Check);
+        ShellLayoutChecks.Run(Check, Path.GetDirectoryName(output)!, SaveVisual);
         PopupChecks.Run(Check, Path.GetDirectoryName(output)!, SaveVisual);
         if (args.Contains("--calibrate"))
         {
@@ -245,25 +256,7 @@ internal static class Program
         root.SetValue(System.Windows.Documents.TextElement.ForegroundProperty, window.Foreground);
         root.SetValue(System.Windows.Documents.TextElement.FontFamilyProperty, window.FontFamily);
         window.Content = null;
-        root.Width = 1280;
-        root.Height = 760;
-        root.Measure(new Size(1280, 760));
-        root.Arrange(new Rect(0, 0, 1280, 760));
-        root.UpdateLayout();
-        Pump();
-        app.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
-        root.UpdateLayout();
-        var bitmap = new RenderTargetBitmap(1280, 760, 96, 96, PixelFormats.Pbgra32);
-        var surface = new DrawingVisual();
-        using (var drawing = surface.RenderOpen())
-        {
-            drawing.DrawRectangle(new SolidColorBrush(Color.FromRgb(32, 32, 32)), null, new Rect(0, 0, 1280, 760));
-            drawing.DrawRectangle(new VisualBrush(root), null, new Rect(0, 0, 1280, 760));
-        }
-        bitmap.Render(surface);
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        using (var file = File.Create(output)) encoder.Save(file);
+        SaveVisual(root, output, 1280, 760);
         Console.WriteLine(output);
         foreach (var theme in new[] { Theme.Blue, Theme.Light })
         {
@@ -405,6 +398,9 @@ internal static class Program
         Pump(); root.UpdateLayout();
         var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(root);
+        // Detached visuals need an initial render before their template animations advance.
+        Pump(); root.UpdateLayout();
+        bitmap.Clear(); bitmap.Render(root);
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var file = File.Create(output); encoder.Save(file);
     }
