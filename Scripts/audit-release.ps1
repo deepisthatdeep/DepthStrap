@@ -1,6 +1,6 @@
 #requires -Version 7.4
 param(
-    [string]$Version='1.2.4',
+    [string]$Version='1.3',
     [ValidateRange(1,3)][int]$AuditPass=1,
     [string]$DotNet='dotnet',
     [string]$PowerShell7=(Get-Command pwsh -ErrorAction Stop).Source

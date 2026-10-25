@@ -68,6 +68,8 @@ namespace Bloxstrap.UI
             Set(resources, "TextFillColorTertiary", light ? "#666666" : "#B8A9A0");
             Set(resources, "ApplicationBackground", background);
             bool arena = theme == Theme.CrimsonContract;
+            Set(resources, "ShellSurface", light ? "#FFFFFF" : arena ? "#ED211417" : "#F21C2027");
+            Set(resources, "ShellBorder", light ? "#D8DDE5" : arena ? "#705B3C36" : "#38343D");
             Set(resources, "ControlFillColorDefault", light ? "#FDFDFD" : arena ? "#ED211417" : "#DC101010");
             Set(resources, "CardBackgroundFillColorDefault", light ? "#FDFDFD" : arena ? "#EC211417" : "#DC181818");
             Set(resources, "CardBackgroundFillColorSecondary", light ? "#F5F5F5" : arena ? "#DE1A1114" : "#CD141414");
@@ -79,6 +81,9 @@ namespace Bloxstrap.UI
             resources["BrandNavigationBackground"] = resources["CardBackgroundFillColorSecondaryBrush"];
             resources["ApplicationBackground"] = arena
                 ? new ImageBrush(ArenaImage.Value) { Stretch = Stretch.UniformToFill, AlignmentX = AlignmentX.Center, AlignmentY = AlignmentY.Bottom }
+                : resources["ApplicationBackgroundBrush"];
+            resources["BrandHeroBackground"] = arena
+                ? new ImageBrush(ArenaImage.Value) { Stretch = Stretch.UniformToFill, AlignmentY = AlignmentY.Center }
                 : resources["ApplicationBackgroundBrush"];
             if (arena)
             {

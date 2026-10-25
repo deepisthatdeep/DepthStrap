@@ -1,0 +1,47 @@
+DEPTHSTRAP — UI REBUILD AND IMPLEMENTED AUDIT FIXES
+October 25, 2026
+
+Scope
+Normal DepthStrap at https://github.com/deepisthatdeep/DepthStrap.
+Base: main commit 71a4d3a, version 1.2.4. This update is registered as version 1.3 on the review branch.
+The existing Crimson Contract art remains. All seven destinations and themes remain. The app settings label and window title now read DepthStrap.
+
+Historical evidence
+The initial audit inspected 17 runtime logs: 16 dated October 16–17 and one temporary uninstall log dated October 20. No October 25 normal-app runtime logs were available, and the installed executable and Settings.json were absent. These logs establish historical failures, not live verification of the new fixes.
+
+1. Normal uninstall truthfulness and cleanup isolation — IMPLEMENTED
+The October 20 log recorded malformed-shortcut and missing-directory errors followed by a success message and exit 0. Installer.DoUninstall now returns an explicit outcome. Independent owned-item failures are collected while later safe cleanup continues; real cleanup failures produce a failure exit code. Already-missing optional directories succeed. Shortcut matching accepts .LNK regardless of case, catches each parse failure separately, and preserves unknown or unrelated shortcuts. Unknown residual files are retained instead of wildcard deletion.
+Deferred removal uses a hidden helper with exact literal paths. The executable must be removed before its uninstall registration. The UI reports scheduled deletion as unverified, not completed removal. Failed executable deletion retains the registration. Normal uninstall remains distinct from Complete wipe.
+Proof: disposable malformed, owned, unrelated and uppercase shortcuts; missing directories; real read-only denial; continued cleanup; quoted paths; disposable registry keys; helper success/failure ordering. No real uninstall was run.
+
+2. Unsaved app settings — IMPLEMENTED
+The settings window compares editable settings with its opening/last-successful-save snapshot. App-only updates/theme changes now enter the existing discard confirmation. Cancel preserves the window. A successful save updates the baseline from the exact persisted JSON; failed saves do not clear it. Learned automatic regions, automatic FPS and migration/layout status are excluded. Manual city and FPS changes remain tracked. The window detaches its save subscription on close.
+Proof: update-only/theme-only changes, cancel/discard, revert, successful/failed saves, automatic-field exclusions and manual edits.
+
+3. Channel lookup lifetime — IMPLEMENTED
+Lookups cancel previous requests, use a 20-second bound, expose their observed task, and commit results only for the current request. Empty input, invalid channel, timeout and transport failure have terminal messages. Cancellation reaches shared deployment HTTP calls; fallback creates a fresh request and response handles are disposed. Private-channel hashes stay masked, and live/zlive aliases remain supported.
+Proof: reversed A/B completion, predecessor cancellation, transport and timeout errors, empty input, private-channel masking and aliases.
+
+4. Server-history lifetime — IMPLEMENTED
+Named watcher handlers are detached when the window closes. Old row-delete handlers are detached on refresh/disposal. Request generations reject stale results/errors and in-flight completion after disposal; later watcher notifications cannot reload a closed model.
+Proof: repeated create/dispose cycles, collectible retired models, actual window Closed disposal, stale completion, one delete handler per row and no work from disposed rows/models.
+
+5. Atomic FastFlags export — IMPLEMENTED
+Export reuses AtomicFile.WriteText and retains its existing error display. Failed replacement preserves the previous destination bytes and removes staging files.
+Proof: escaped JSON round-trip and read-only replacement failure against disposable exports.
+
+6. Deferred update diagnostics — IMPLEMENTED
+The DepthStrap page displays the installed version and any persisted deferred update notice, including the incoming version when known. Replacement diagnostics distinguish Windows sharing/lock violations, a read-only executable, unresolved access denial, and other Windows errors. Automatic replacement preserves read-only attributes. No process is terminated to force replacement. Failed checks/saves/handoffs produce status; a valid up-to-date stable response clears a previous failed-check notice. Invalid metadata cannot clear it.
+Proof: diagnostic cases, preserved read-only bytes/attributes, serialization and stale-warning suppression, fail-then-current lookup, failed persistence/handoff statuses, plus existing updater replacement/download/handoff tests.
+The two historical UnauthorizedAccessException logs do not establish whether a lock, ACL, antivirus or another cause was responsible. The new diagnostics improve future evidence; they do not invent a retrospective cause. An older installed binary cannot display UI added only in this candidate.
+
+7. Early-exit post-launch helpers — IMPLEMENTED
+The launcher captures the original process start time and sends it with the PID. The helper validates name and start time, holds that original process handle across its delay, treats absent/exited processes as normal completion, and disposes handles. Existing PID-only helper arguments remain compatible with name validation and handle retention. Genuine access errors remain visible.
+Proof: missing/early-exit processes, wrong name/start time, malformed/null identity arguments, legacy parsing and native handle disposal. No Roblox process was launched or modified.
+
+8. Network comparison prerequisite — IMPLEMENTED
+The running-game prerequisite appears beside the action and in the comparison dialog. The backend still rechecks before clearing history or changing routes. Running-player and competing-operation refusals log status without exception stacks; controls remain available for retry. All enumerated process handles are disposed.
+Proof: injected running-player and occupied-operation gate cases, unchanged calibration sentinel, one status log, gate release and matching prerequisite copy. No real route or adapter changes occurred.
+
+Verification and limits
+See verification.txt. Tests cover controlled inputs, disposable files/registry keys and simulated adapters. WPF renders check layout and bindings; they are not live installed-app screenshots. Native gameplay, actual installation/uninstall, WARP switching, physical adapter changes and mixed-DPI monitor behavior remain unverified. The executable remains unsigned and is version 1.3. The full production release gate has not been run, and no stable release is published by this source update.

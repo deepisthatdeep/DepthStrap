@@ -270,10 +270,10 @@ namespace Bloxstrap
             return String.IsNullOrEmpty(InstallLocationError);
         }
 
-        public static void DoUninstall(bool keepData)
+        public static NormalUninstallResult DoUninstall(bool keepData)
         {
             const string LOG_IDENT = "Installer::DoUninstall";
-
+            var outcome = new NormalUninstallResult();
             var processes = new List<Process>();
 
             try
@@ -295,10 +295,7 @@ namespace Bloxstrap
                     );
 
                     if (result != MessageBoxResult.OK)
-                    {
-                        App.Terminate(ErrorCode.ERROR_CANCELLED);
-                        return;
-                    }
+                        return new NormalUninstallResult { Cancelled = true };
 
                     foreach (var process in processes)
                     {
@@ -314,9 +311,8 @@ namespace Bloxstrap
             catch (Exception ex)
             {
                 App.Logger.WriteException(LOG_IDENT, ex);
-                Frontend.ShowMessageBox("Roblox could not be closed. Close all Roblox clients and try uninstalling again.", MessageBoxImage.Warning);
-                App.Terminate(ErrorCode.ERROR_INSTALL_FAILURE);
-                return;
+                outcome.Failures.Add("Roblox could not be closed. Close all Roblox clients and try uninstalling again.");
+                return outcome;
             }
             finally
             {
@@ -328,130 +324,103 @@ namespace Bloxstrap
             bool playerStillInstalled = true;
             bool studioStillInstalled = true;
 
-            // check if stock bootstrapper is still installed
-            using var playerKey = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\roblox-player");
-            var playerFolder = playerKey?.GetValue("InstallLocation");
-
-            if (playerKey is null || playerFolder is not string)
+            NormalUninstallCleanup.Run(outcome, "Roblox registration", () =>
             {
-                playerStillInstalled = false;
+                // check if stock bootstrapper is still installed
+                using var playerKey = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\roblox-player");
+                var playerFolder = playerKey?.GetValue("InstallLocation");
 
-                WindowsRegistry.Unregister("roblox");
-                WindowsRegistry.Unregister("roblox-player");
-            }
-            else
-            {
-                string playerPath = Path.Combine((string)playerFolder, App.RobloxPlayerAppName);
-
-                WindowsRegistry.RegisterPlayer(playerPath, "%1");
-            }
-
-            using var studioKey = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\roblox-studio");
-            var studioFolder = studioKey?.GetValue("InstallLocation");
-
-            if (studioKey is null || studioFolder is not string)
-            {
-                studioStillInstalled = false;
-
-                WindowsRegistry.Unregister("roblox-studio");
-                WindowsRegistry.Unregister("roblox-studio-auth");
-
-                WindowsRegistry.Unregister("Roblox.Place");
-                WindowsRegistry.Unregister(".rbxl");
-                WindowsRegistry.Unregister(".rbxlx");
-            }
-            else
-            {
-                string studioPath = Path.Combine((string)studioFolder, App.RobloxStudioAppName);
-                string studioLauncherPath = Path.Combine((string)studioFolder, "RobloxStudioLauncherBeta.exe");
-
-                WindowsRegistry.RegisterStudioProtocol(studioPath, "%1");
-                WindowsRegistry.RegisterStudioFileClass(studioPath, "-ide \"%1\"");
-            }
-
-            Registry.CurrentUser.DeleteSubKey(App.ApisKey, false);
-
-            var cleanupSequence = new List<Action>
-            {
-                () =>
+                if (playerKey is null || playerFolder is not string)
                 {
-                    foreach (var file in Directory.GetFiles(Paths.Desktop).Where(x => x.EndsWith("lnk")))
-                    {
-                        var shortcut = ShellLink.Shortcut.ReadFromFile(file);
+                    playerStillInstalled = false;
 
-                        if (shortcut.ExtraData.EnvironmentVariableDataBlock?.TargetUnicode == Paths.Application)
-                            File.Delete(file);
-                    }
-                },
-
-                () => File.Delete(StartMenuShortcut),
-
-                () => Directory.Delete(Paths.Versions, true),
-
-                () => Directory.Delete(Paths.Downloads, true),
-
-                () => File.Delete(App.State.FileLocation),
-
-                () =>
-                {
-                if (Paths.Roblox == Path.Combine(Paths.Base, "Roblox")) // checking if roblox is installed in base directory
-                    Directory.Delete(Paths.Roblox, true);               // made that to prevent accidental removals of different builds
+                    WindowsRegistry.Unregister("roblox");
+                    WindowsRegistry.Unregister("roblox-player");
                 }
+                else
+                {
+                    string playerPath = Path.Combine((string)playerFolder, App.RobloxPlayerAppName);
+
+                    WindowsRegistry.RegisterPlayer(playerPath, "%1");
+                }
+
+                using var studioKey = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\roblox-studio");
+                var studioFolder = studioKey?.GetValue("InstallLocation");
+
+                if (studioKey is null || studioFolder is not string)
+                {
+                    studioStillInstalled = false;
+
+                    WindowsRegistry.Unregister("roblox-studio");
+                    WindowsRegistry.Unregister("roblox-studio-auth");
+
+                    WindowsRegistry.Unregister("Roblox.Place");
+                    WindowsRegistry.Unregister(".rbxl");
+                    WindowsRegistry.Unregister(".rbxlx");
+                }
+                else
+                {
+                    string studioPath = Path.Combine((string)studioFolder, App.RobloxStudioAppName);
+                    string studioLauncherPath = Path.Combine((string)studioFolder, "RobloxStudioLauncherBeta.exe");
+
+                    WindowsRegistry.RegisterStudioProtocol(studioPath, "%1");
+                    WindowsRegistry.RegisterStudioFileClass(studioPath, "-ide \"%1\"");
+                }
+            });
+            if (outcome.Failures.Count > 0) return outcome;
+            NormalUninstallCleanup.Run(outcome, "DepthStrap registration", () => Registry.CurrentUser.DeleteSubKey(App.ApisKey, false));
+
+            var cleanupSequence = new List<(string Name, Action Cleanup)>
+            {
+                ("Desktop shortcuts", () => NormalUninstallCleanup.RemoveDesktopShortcuts(Paths.Desktop, Paths.Application, outcome)),
+
+                ("Start menu shortcut", () => File.Delete(StartMenuShortcut)),
+
+                ("Installed versions", () => NormalUninstallCleanup.DeleteDirectory(Paths.Versions)),
+
+                ("Downloaded packages", () => NormalUninstallCleanup.DeleteDirectory(Paths.Downloads)),
+
+                ("Installation state", () => File.Delete(App.State.FileLocation)),
+
+                ("Nested Roblox installation", () =>
+                {
+                    if (Paths.Roblox == Path.Combine(Paths.Base, "Roblox")) // checking if roblox is installed in base directory
+                        NormalUninstallCleanup.DeleteDirectory(Paths.Roblox); // made that to prevent accidental removals of different builds
+                })
             };
 
             if (!keepData)
             {
-                cleanupSequence.AddRange(new List<Action>
+                cleanupSequence.AddRange(new (string, Action)[]
                 {
-                    () => Directory.Delete(Paths.Modifications, true),
-                    () => Directory.Delete(Paths.CustomCursors, true),
-                    () => File.Delete(App.Settings.FileLocation),
-                    () => File.Delete(App.State.FileLocation)
+                    ("Modifications", () => NormalUninstallCleanup.DeleteDirectory(Paths.Modifications)),
+                    ("Custom cursors", () => NormalUninstallCleanup.DeleteDirectory(Paths.CustomCursors)),
+                    ("Settings", () => File.Delete(App.Settings.FileLocation)),
+                    ("Installation state", () => File.Delete(App.State.FileLocation))
                 });
-
-                // Only delete the Froststrap folder if keepData is false
-                bool deleteFolder = Directory.GetFiles(Paths.Base).Length <= 3;
-                if (deleteFolder)
-                    cleanupSequence.Add(() => Directory.Delete(Paths.Base, true));
             }
 
             if (!playerStillInstalled && !studioStillInstalled && Directory.Exists(robloxFolder))
-                cleanupSequence.Add(() => Directory.Delete(robloxFolder, true));
+                cleanupSequence.Add(("Roblox files", () => NormalUninstallCleanup.DeleteDirectory(robloxFolder)));
 
-            cleanupSequence.Add(() => Registry.CurrentUser.DeleteSubKey(App.UninstallKey));
+            foreach (var item in cleanupSequence)
+                NormalUninstallCleanup.Run(outcome, item.Name, item.Cleanup);
 
-            foreach (var process in cleanupSequence)
+            // Keep a failed uninstall available for a retry before removing its registration or executable.
+            if (outcome.Failures.Count > 0) return outcome;
+            NormalUninstallCleanup.Run(outcome, "Executable removal", () =>
             {
-                try
+                if (string.Equals(Path.GetFullPath(Paths.Process), Path.GetFullPath(Paths.Application), StringComparison.OrdinalIgnoreCase))
                 {
-                    process();
+                    using var remover = Process.Start(NormalUninstallCleanup.DeferredDeleteStartInfo(Paths.Application, Paths.Base, Environment.ProcessId, App.UninstallKey));
+                    if (remover is null) throw new IOException("The executable removal helper could not start.");
+                    outcome.ExecutableDeletionPending = true;
                 }
-                catch (Exception ex)
-                {
-                    App.Logger.WriteLine(LOG_IDENT, $"Encountered exception when running cleanup sequence (#{cleanupSequence.IndexOf(process)})");
-                    App.Logger.WriteException(LOG_IDENT, ex);
-                }
-            }
-
-            if (Directory.Exists(Paths.Base))
-            {
-                // this is definitely one of the workaround hacks of all time
-
-                string deleteCommand;
-
-                if (!keepData && Directory.GetFiles(Paths.Base).Length <= 3)
-                    deleteCommand = $"del /Q \"{Paths.Base}\\*\" && rmdir \"{Paths.Base}\"";
-                else
-                    deleteCommand = $"del /Q \"{Paths.Application}\"";
-
-                Process.Start(new ProcessStartInfo()
-                {
-                    FileName = "cmd.exe",
-                    Arguments = $"/c timeout 5 && {deleteCommand}",
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Hidden
-                });
-            }
+                else File.Delete(Paths.Application);
+            });
+            if (outcome.Failures.Count == 0 && !outcome.ExecutableDeletionPending)
+                NormalUninstallCleanup.Run(outcome, "Uninstall registration", () => Registry.CurrentUser.DeleteSubKey(App.UninstallKey, false));
+            return outcome;
         }
 
         public static void HandleUpgrade()
@@ -510,13 +479,11 @@ namespace Bloxstrap
 
             App.Logger.WriteLine(LOG_IDENT, "Doing upgrade");
 
-            Filesystem.AssertReadOnly(Paths.Application);
-
             // Keep the updater lock through replacement and upgrade metadata writes.
             using var updateLock = new InterProcessLock("AutoUpdater", TimeSpan.FromSeconds(30));
             if (!updateLock.IsAcquired)
             {
-                App.Logger.WriteLine(LOG_IDENT, "App update deferred: another update still holds the lock.");
+                AppUpdater.RecordDeferredUpdate(existingVer, currentVer, "Another app update still holds the update lock. Close other DepthStrap windows and retry.");
                 return;
             }
             // Another updater may have completed while this process waited for
@@ -533,10 +500,12 @@ namespace Bloxstrap
             try { AppUpdater.ReplaceExecutableWithRetries(Paths.Process, Paths.Application); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                App.Logger.WriteLine(LOG_IDENT, "App update deferred: the installed executable is still unavailable after bounded retries.");
+                AppUpdater.RecordDeferredUpdate(existingVer, currentVer, AppUpdater.DescribeReplacementFailure(Paths.Application, ex));
                 App.Logger.WriteException(LOG_IDENT, ex);
                 return;
             }
+
+            AppUpdater.ClearDeferredUpdate();
 
             using (var uninstallKey = Registry.CurrentUser.CreateSubKey(App.UninstallKey))
             {

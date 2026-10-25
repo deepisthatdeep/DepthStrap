@@ -19,10 +19,10 @@
             FontSize="14"
             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
             TextWrapping="Wrap"
-            Text="Roblox Settings: Competitive Mode (server region, CPU priority, rendering load, Chime diagnostics) plus Roblox global settings (graphics, audio, input). Measurable optimizations first - no placebo ping flags." />
+            Text="Choose a performance profile, then fine-tune your game, server preferences and diagnostics below. Save to apply your changes." />
 
         <!-- ============ COMPETITIVE MODE ============ -->
-        <ui:CardExpander Margin="0,8,0,0" IsExpanded="True">
+        <ui:CardExpander x:Name="ProfileSection" Margin="0,8,0,0" IsExpanded="True">
             <ui:CardExpander.Header>
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -32,7 +32,7 @@
 
                     <StackPanel Grid.Column="0">
                         <TextBlock FontSize="14" Text="Competitive Mode" FontWeight="SemiBold" />
-                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Master switch. Disabling returns to ordinary DepthStrap behavior." />
+                        <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,3,16,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Performance profiles for the way you play. Turn off to restore ordinary DepthStrap behavior." />
                     </StackPanel>
 
                     <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding Enabled, Mode=TwoWay}" />
@@ -58,7 +58,7 @@
         </ui:CardExpander>
 
         <!-- ============ CURRENT SESSION (live) ============ -->
-        <ui:CardExpander Margin="0,8,0,0" IsExpanded="True">
+        <ui:CardExpander x:Name="SessionSection" Margin="0,12,0,0" IsExpanded="False">
             <ui:CardExpander.Header>
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -68,7 +68,7 @@
 
                     <StackPanel Grid.Column="0">
                         <TextBlock FontSize="14" Text="Current Session" FontWeight="SemiBold" />
-                        <TextBlock FontSize="12" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Updates while connected. Region and network details load after each server join." />
+                        <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,3,16,0" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Text="Live region, connection and latency details after each server join." />
                     </StackPanel>
 
                     <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12"
@@ -135,7 +135,7 @@
         </ui:CardExpander>
 
         <!-- ============ REGION ============ -->
-        <ui:CardExpander Margin="0,8,0,0" IsExpanded="True">
+        <ui:CardExpander x:Name="RegionSection" Margin="0,12,0,0" IsExpanded="False">
             <ui:CardExpander.Header>
                 <TextBlock FontSize="14" Text="Region" FontWeight="SemiBold" />
             </ui:CardExpander.Header>
@@ -146,6 +146,7 @@
                 </controls:OptionControl>
                 <controls:OptionControl Header="Network comparison" Description="Disconnect other VPNs and proxies first. Compare normal routing against WARP after moving or changing your connection.">
                     <StackPanel Width="240">
+                        <TextBlock Text="{Binding NetworkComparisonPrerequisite}" TextWrapping="Wrap" Margin="0,0,0,8" />
                         <ui:Button Content="Compare normal / WARP" Command="{Binding RecalibrateRegionsCommand}" Padding="12,6" />
                         <TextBlock Text="{Binding CalibrationStatus}" TextWrapping="Wrap" Margin="0,8,0,0" />
                     </StackPanel>
@@ -188,7 +189,7 @@
         </ui:CardExpander>
 
         <!-- ============ CHIME ============ -->
-        <ui:CardExpander Margin="0,8,0,0" IsExpanded="True">
+        <ui:CardExpander x:Name="ChimeSection" Margin="0,12,0,0" IsExpanded="False">
             <ui:CardExpander.Header>
                 <TextBlock FontSize="14" Text="Deepwoken Chime Monitor" FontWeight="SemiBold" />
             </ui:CardExpander.Header>
@@ -213,7 +214,7 @@
         </ui:CardExpander>
 
         <!-- ============ NETWORK DIAGNOSTICS (RobloxRouteLab) ============ -->
-        <ui:CardExpander Margin="0,8,0,0" IsExpanded="True">
+        <ui:CardExpander x:Name="NetworkSection" Margin="0,12,0,0" IsExpanded="False">
             <ui:CardExpander.Header>
                 <TextBlock FontSize="14" Text="Network Diagnostics" FontWeight="SemiBold" />
             </ui:CardExpander.Header>
@@ -238,7 +239,7 @@
         </ui:CardExpander>
 
         <!-- ============ PERFORMANCE ============ -->
-        <ui:CardExpander Margin="0,8,0,0" IsExpanded="True">
+        <ui:CardExpander x:Name="PerformanceSection" Margin="0,12,0,0" IsExpanded="False">
             <ui:CardExpander.Header>
                 <TextBlock FontSize="14" Text="Performance" FontWeight="SemiBold" />
             </ui:CardExpander.Header>
@@ -304,7 +305,7 @@
                 </controls:OptionControl>
 
                 <!-- Rendering layer -->
-                <ui:CardExpander Margin="0,8,0,0" IsExpanded="True">
+                <ui:CardExpander Margin="0,8,0,0" IsExpanded="False">
                     <ui:CardExpander.Header>
                         <TextBlock FontSize="13" Text="Competitive Rendering Tweaks (FastFlag layer - best effort)" FontWeight="SemiBold" />
                     </ui:CardExpander.Header>
@@ -455,7 +456,7 @@
             <StackPanel>
                 <Separator Margin="0,8" />
                 <TextBlock FontSize="20" FontWeight="Bold" Text="Graphics Settings" Margin="0,0,0,8" />
-                <UniformGrid Columns="4">
+                <UniformGrid Columns="2">
                     <controls:SquareCard Header="Framerate Limit" Description="Use the FPS Limit controls above when performance mode is enabled.">
                         <ui:TextBox IsEnabled="{Binding DataContext.ManualFpsEnabled, RelativeSource={RelativeSource AncestorType=ui:UiPage}}" Text="{Binding FramerateCap, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PreviewTextInput="ValidateUInt32" />
                     </controls:SquareCard>
@@ -479,7 +480,7 @@
 
                 <Separator Margin="0,8" />
                 <TextBlock FontSize="20" FontWeight="Bold" Text="Audio Settings" Margin="0,0,0,8" />
-                <UniformGrid Columns="4">
+                <UniformGrid Columns="2">
                     <controls:SquareCard Header="Master Volume" Description="Global volume level.">
                         <Slider Minimum="0" Maximum="1" TickFrequency="0.1" Value="{Binding MasterVolume}" AutoToolTipPlacement="TopLeft" />
                     </controls:SquareCard>
@@ -495,7 +496,7 @@
 
                 <Separator Margin="0,8" />
                 <TextBlock FontSize="20" FontWeight="Bold" Text="Input Settings" Margin="0,0,0,8" />
-                <UniformGrid Columns="4">
+                <UniformGrid Columns="2">
                     <controls:SquareCard Header="Sensitivity" Description="Global camera sensitivity.">
                         <ui:TextBox Text="{Binding MouseSensitivity}" PreviewTextInput="ValidateFloat" />
                     </controls:SquareCard>
@@ -547,7 +548,7 @@
 
                 <Separator Margin="0,8" />
                 <TextBlock FontSize="20" FontWeight="Bold" Text="Accessibility &amp; Misc" Margin="0,0,0,8" />
-                <UniformGrid Columns="4">
+                <UniformGrid Columns="2">
                     <controls:SquareCard Header="UI Transparency" Description="Adjust transparency of UI elements.">
                         <ui:TextBox Text="{Binding UITransparency}" PreviewTextInput="ValidateFloat" />
                     </controls:SquareCard>

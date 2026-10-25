@@ -20,13 +20,13 @@
             return JsonSerializer.Deserialize<T>(json)!;
         }
 
-        public static async Task<T> SendJson<T>(HttpRequestMessage requestMessage)
+        public static async Task<T> SendJson<T>(HttpRequestMessage requestMessage, CancellationToken token = default)
         {
-            var request = await App.HttpClient.SendAsync(requestMessage);
+            using var request = await App.HttpClient.SendAsync(requestMessage, token);
 
             request.EnsureSuccessStatusCode();
 
-            string json = await request.Content.ReadAsStringAsync();
+            string json = await request.Content.ReadAsStringAsync(token);
 
             return JsonSerializer.Deserialize<T>(json)!;
         }

@@ -50,5 +50,16 @@ namespace Bloxstrap.UI.Elements.Controls
         {
             InitializeComponent();
         }
+
+        private void Control_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            bool stacked = e.NewSize.Width < 640;
+            Grid.SetColumnSpan(DescriptionPanel, stacked ? 2 : 1);
+            Grid.SetRow(Editor, stacked ? 1 : 0);
+            Grid.SetColumn(Editor, stacked ? 0 : 1);
+            Grid.SetColumnSpan(Editor, stacked ? 2 : 1);
+            Editor.HorizontalAlignment = stacked ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
+            Editor.Margin = stacked ? new Thickness(0, 12, 0, 0) : new Thickness(20, 0, 0, 0);
+        }
     }
 }

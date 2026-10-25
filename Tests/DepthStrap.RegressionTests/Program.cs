@@ -186,14 +186,28 @@ internal static class Program
         }
         if (args.Contains("--update-only"))
         {
-            AppUpdateChecks.Run(Check); AppUpdateFlowChecks.Run(Check); AppUpdateHandoffChecks.Run(Check);
+            AppUpdateChecks.Run(Check); AppUpdateFlowChecks.Run(Check); AppUpdateStatusChecks.Run(Check); AppUpdateHandoffChecks.Run(Check);
             Console.WriteLine($"PASS: {_checks} updater checks"); return;
+        }
+        if (args.Contains("--fixes-only"))
+        {
+            RunFixChecks();
+            Console.WriteLine($"PASS: {_checks} documented-fix checks"); return;
         }
         if (args.Contains("--audit-only")) { ReliabilityAuditChecks.Run(Check); Console.WriteLine($"PASS: {_checks} audit checks"); return; }
         if (args.Contains("--public-network-only")) { ServerBrowserChecks.VerifyPublicNetwork(Check); Console.WriteLine($"PASS: {_checks} public network checks"); return; }
         var bindingErrors = new BindingErrors();
         PresentationTraceSources.DataBindingSource.Switch.Level = SourceLevels.Error;
         PresentationTraceSources.DataBindingSource.Listeners.Add(bindingErrors);
+        if (args.Contains("--layout-only"))
+        {
+            VerifyThemes(app);
+            OptionLayoutChecks.Run(Check);
+            ShellLayoutChecks.Run(Check, Path.GetDirectoryName(output)!, SaveVisual);
+            Check(bindingErrors.Messages.Count == 0, "Layout binding errors: " + string.Join("\n", bindingErrors.Messages.Take(12)));
+            Console.WriteLine($"PASS: {_checks} theme and responsive layout checks");
+            return;
+        }
         if (args.Contains("--popup-only"))
         {
             VerifyThemes(app);
@@ -202,6 +216,7 @@ internal static class Program
             Console.WriteLine($"PASS: {_checks} popup checks");
             return;
         }
+        Console.WriteLine("Checking core, networking and settings");
         VerifyCore();
         PublicNetworkHttpChecks.Run(Check);
         NetworkChecks.Run(Check, args.Contains("--verify-warp-package") ? args[Array.IndexOf(args, "--verify-warp-package") + 1] : null);
@@ -210,11 +225,13 @@ internal static class Program
         SettingsChecks.Run(Check);
         ClientFilesChecks.Run(Check);
         VersionChecks.Run(Check);
+        Console.WriteLine("Checking updater and installer");
         AppUpdateChecks.Run(Check);
         AppUpdateFlowChecks.Run(Check);
         AppUpdateHandoffChecks.Run(Check);
         InstallerChecks.Run(Check);
         InstallLifecycleChecks.Run(Check);
+        Console.WriteLine("Checking browser, logger and watcher fixtures");
         ServerBrowserChecks.Run(Check);
         GameSearchChecks.Run(Check);
         if (args.Contains("--verify-public-network")) ServerBrowserChecks.VerifyPublicNetwork(Check);
@@ -222,9 +239,14 @@ internal static class Program
         LoggerChecks.Run(Check);
         WatcherChecks.Run(Check);
         SessionStateFileChecks.Run(Check);
+        Console.WriteLine("Checking reliability and history");
         ReliabilityAuditChecks.Run(Check);
         HistoryChecks.Run(Check);
+        RunFixChecks();
+        Console.WriteLine("Checking themes, layouts and popups");
         VerifyThemes(app);
+        OptionLayoutChecks.Run(Check);
+        ShellLayoutChecks.Run(Check, Path.GetDirectoryName(output)!, SaveVisual);
         PopupChecks.Run(Check, Path.GetDirectoryName(output)!, SaveVisual);
         if (args.Contains("--calibrate"))
         {
@@ -245,25 +267,7 @@ internal static class Program
         root.SetValue(System.Windows.Documents.TextElement.ForegroundProperty, window.Foreground);
         root.SetValue(System.Windows.Documents.TextElement.FontFamilyProperty, window.FontFamily);
         window.Content = null;
-        root.Width = 1280;
-        root.Height = 760;
-        root.Measure(new Size(1280, 760));
-        root.Arrange(new Rect(0, 0, 1280, 760));
-        root.UpdateLayout();
-        Pump();
-        app.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
-        root.UpdateLayout();
-        var bitmap = new RenderTargetBitmap(1280, 760, 96, 96, PixelFormats.Pbgra32);
-        var surface = new DrawingVisual();
-        using (var drawing = surface.RenderOpen())
-        {
-            drawing.DrawRectangle(new SolidColorBrush(Color.FromRgb(32, 32, 32)), null, new Rect(0, 0, 1280, 760));
-            drawing.DrawRectangle(new VisualBrush(root), null, new Rect(0, 0, 1280, 760));
-        }
-        bitmap.Render(surface);
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        using (var file = File.Create(output)) encoder.Save(file);
+        SaveVisual(root, output, 1280, 760);
         Console.WriteLine(output);
         foreach (var theme in new[] { Theme.Blue, Theme.Light })
         {
@@ -337,6 +341,22 @@ internal static class Program
         Environment.Exit(0);
     }
 
+    private static void RunFixChecks()
+    {
+        Console.WriteLine("Checking normal uninstall outcomes");
+        NormalUninstallChecks.Run(Paths.Base, Check);
+        Console.WriteLine("Checking post-launch process lifetime");
+        PostLaunchProcessChecks.Run(Check);
+        Console.WriteLine("Checking settings changes and channel requests");
+        SettingsInteractionChecks.Run(Check);
+        Console.WriteLine("Checking history window lifetime");
+        HistoryLifetimeChecks.Run(Check);
+        Console.WriteLine("Checking atomic export and network refusal");
+        ExportAndNetworkGuardChecks.Run(Check);
+        Console.WriteLine("Checking deferred update status");
+        AppUpdateStatusChecks.Run(Check);
+    }
+
     private static void CheckReleaseDropdown(AdvancedRobloxSettingsPage launchSettingsPage)
     {
         var versionPanel = (FrameworkElement)launchSettingsPage.FindName("VersionSettingsPanel");
@@ -405,6 +425,9 @@ internal static class Program
         Pump(); root.UpdateLayout();
         var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(root);
+        // Detached visuals need an initial render before their template animations advance.
+        Pump(); root.UpdateLayout();
+        bitmap.Clear(); bitmap.Render(root);
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var file = File.Create(output); encoder.Save(file);
     }

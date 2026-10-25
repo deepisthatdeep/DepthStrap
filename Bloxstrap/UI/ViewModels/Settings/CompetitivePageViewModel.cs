@@ -45,6 +45,7 @@ namespace Bloxstrap.UI.ViewModels.Settings
             set { App.Settings.Prop.AdaptiveRegionPreferencesEnabled = value; Raise(); Raise(nameof(ManualRegionControls)); }
         }
         public bool ManualRegionControls => !AdaptiveRegions;
+        public string NetworkComparisonPrerequisite => Networking.RegionCalibrationService.PlayerPrerequisite;
         public string CalibrationStatus => Networking.NetworkTestResult.Read()?.Status ?? Networking.AdaptiveRegionService.Status;
         public bool IcmpAvailable => Networking.NetworkTestResult.Read()?.IcmpAvailable ?? false;
         public bool CloudflareAvailable => Networking.NetworkTestResult.Read()?.CloudflareAvailable ?? false;

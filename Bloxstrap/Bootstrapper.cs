@@ -66,6 +66,7 @@ namespace Bloxstrap
 
 
         private int _appPid = 0;
+        private long _appStartTimeUtcTicks;
 
         public IBootstrapperDialog? Dialog = null;
 
@@ -770,6 +771,8 @@ namespace Bloxstrap
             {
                 using var process = Process.Start(startInfo)!;
                 _appPid = process.Id;
+                try { _appStartTimeUtcTicks = process.StartTime.ToUniversalTime().Ticks; }
+                catch (Exception ex) { App.Logger.WriteException($"{LOG_IDENT}::PostLaunchIdentity", ex); }
 
                 // competitive: apply High priority + power throttling IMMEDIATELY after launch,
                 // then verify once more ~PerformanceReapplyDelayMs later (single pass, no polling loop).
@@ -859,14 +862,17 @@ namespace Bloxstrap
                     }
                 }
 
-                Process.Start(new ProcessStartInfo
+                if (_appStartTimeUtcTicks > 0)
                 {
-                    FileName = Paths.Process,
-                    Arguments = $"-postlaunch {_appPid}",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden
-                });
+                    using var postLaunch = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = Paths.Process,
+                        Arguments = $"-postlaunch {_appPid}:{_appStartTimeUtcTicks}",
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        WindowStyle = ProcessWindowStyle.Hidden
+                    });
+                }
             }
 
             bool competitiveMonitoring = Competitive.RegionMonitoringPolicy.NeedsWatcher(App.Settings.Prop);

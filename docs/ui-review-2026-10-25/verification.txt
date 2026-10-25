@@ -1,0 +1,40 @@
+DEPTHSTRAP UI AND RELIABILITY REVIEW — VERIFICATION
+October 25, 2026
+
+Base: main 71a4d3a2b7240aaa52d5426a6a287e7a862ce81c; initial UI commit 05f09f3.
+Candidate: codex/crimson-ui-reaudit, PR #7.
+Executable: version 1.3; assembly 1.3.0.0. No stable release published. Future updater-compatible release tag: v1.3.0.
+SDK: .NET 10.0.401 on Windows.
+
+Version registration
+Version 1.3 uses assembly version 1.3.0.0 and file/product labels 1.3. Release/package script defaults and README were updated together. The previous full regression/recovery results below precede this version-only bump; the Release build and 127 updater checks were rerun successfully for 1.3. The updater fixture now restores its normalized stable tag rather than deriving it from a two-part display label.
+
+Completed checks
+PASS — Full Release solution build: 0 warnings, 0 errors.
+PASS — Full app regression suite: 1,021 checks, including all eight documented fixes, seven settings pages, all nine themes' popup previews and existing updater/install/network fixtures.
+PASS — 80 focused documented-fix checks (included in the full count).
+PASS — 76 focused theme/responsive-layout checks, rerun after the final title-label change (included in the full count).
+PASS — 289 production recovery checks using disposable fixtures.
+PASS — 44 production MAC transaction checks using simulated adapters.
+PASS — Seven public build-boundary and ten source-package-boundary checks.
+PASS — Thirteen shipped PowerShell sources parsed; Git whitespace checks passed.
+PASS — Independent source review of settings/channel and updater changes. A stale deferred-update warning was found, fixed and covered by a fail-then-current-release regression.
+PASS — Self-contained Windows x64 single-file publish and packaged app identity/elevated helper command construction. No helper was launched by the package check.
+PASS — Privacy/credential scan: 1,299 source files, 26 Windows-package files and the executable. README-linked audit documents and preview ship in both archives.
+PASS — Source archive extracted into a new directory and built: 0 errors, five existing dependency warnings about duplicate MSBuild imports and unavailable Git/SourceLink metadata.
+
+Fixture coverage
+Normal uninstall: malformed/uppercase/unrelated shortcuts, missing folders, read-only failures, continued cleanup, exact quoted paths, delayed deletion and registration ordering in a unique disposable registry key.
+Settings: app-only dirty confirmation, cancel/discard, revert, successful/failed saves, automatic versus manual values.
+Channel: latest request wins, cancellation, timeout/transport/empty errors, aliases and private hash masking.
+History: subscriptions detached on Closed, collectible retired instances, rejected stale completion, row-handler cleanup.
+Export: JSON round-trip, failed replacement preserves original bytes and cleans staging.
+Updates: versions/reasons visible, read-only executable preserved, unknown causes remain unknown, notice serialization and clearing only after a valid current stable response.
+Post-launch: original PID/start time/name validation, early exit and native handle disposal.
+Network: backend refusal before reset/route work, one status line, operation gate release and visible prerequisite.
+
+Layout evidence
+DepthStrap-Crimson-UI.png is a 1280 x 800 WPF render of the enhanced original artwork and renamed DepthStrap label/title. Light and small-screen renders remain available in the local outputs. Detached previews supply their initial page/selection and allow template animations to settle. These renders do not prove live native navigation or mixed-DPI placement.
+
+Scope and limits
+No real Roblox/Studio launch, gameplay, installed-app operation, uninstall/wipe, browser-cookie deletion, WARP route switch or physical adapter change was performed. No desktop automation was used. The executable is unsigned. Delayed removal is explicitly pending until executed. Existing older binaries cannot display newly added update notices. The full three-pass production release gate was not run; PR publication updates source, not installed copies.

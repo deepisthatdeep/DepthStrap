@@ -3,8 +3,11 @@ using Bloxstrap.Competitive;
 
 namespace Bloxstrap.Networking
 {
+    internal sealed class NetworkComparisonUnavailableException(string message) : InvalidOperationException(message) { }
+
     internal static class RegionCalibrationService
     {
+        internal const string PlayerPrerequisite = "Close all Roblox Player windows before testing. The comparison changes your computer's network route.";
         private static readonly HttpClient Client = CreateClient();
         private static HttpClient CreateClient()
         {
@@ -13,14 +16,16 @@ namespace Bloxstrap.Networking
         }
         internal static Semaphore OpenOperationGate() => new(1, 1, "DepthStrap-NetworkSetup");
         public static async Task RunAsync(CancellationToken token = default) => await RunComparisonAsync(false, false, null, token);
-        public static async Task<NetworkTestResult> RunComparisonAsync(bool reset, bool setupWarp, IProgress<string>? progress, CancellationToken token)
+        public static Task<NetworkTestResult> RunComparisonAsync(bool reset, bool setupWarp, IProgress<string>? progress, CancellationToken token)
+            => RunComparisonAsync(reset, setupWarp, progress, token, HasActivePlayer);
+
+        internal static async Task<NetworkTestResult> RunComparisonAsync(bool reset, bool setupWarp, IProgress<string>? progress, CancellationToken token, Func<bool> playerRunning)
         {
             using var operation = OpenOperationGate();
-            if (!operation.WaitOne(0)) throw new InvalidOperationException("Another network test or WARP change is already running.");
+            if (!operation.WaitOne(0)) throw RefuseComparison("Another network test or WARP change is already running.");
             try
             {
-                using var activeGame = Process.GetProcessesByName("RobloxPlayerBeta").FirstOrDefault();
-                if (activeGame is not null) throw new InvalidOperationException("Close Roblox before testing. The comparison switches your computer's network route.");
+                if (playerRunning()) throw RefuseComparison(PlayerPrerequisite);
                 if (reset) { progress?.Report("Clearing network logs and learned preferences…"); NetworkHistory.Reset(); }
                 progress?.Report("Checking the current connection and discovering Roblox routing targets…");
                 var original = await CloudflareNetworkState.QueryAsync(token, true);
@@ -123,6 +128,20 @@ namespace Bloxstrap.Networking
             }
             finally { operation.Release(); }
         }
+
+        private static NetworkComparisonUnavailableException RefuseComparison(string message)
+        {
+            App.Logger.WriteLine("NetworkSetup", message);
+            return new NetworkComparisonUnavailableException(message);
+        }
+
+        private static bool HasActivePlayer()
+        {
+            var processes = Process.GetProcessesByName("RobloxPlayerBeta");
+            try { return processes.Length > 0; }
+            finally { foreach (var process in processes) process.Dispose(); }
+        }
+
         internal static async Task<List<RoutingTarget>> DiscoverAsync(CancellationToken token)
         {
             using var links = JsonDocument.Parse(await PublicNetworkHttp.GetAsync(Client, "https://www.peeringdb.com/api/netixlan?net_id=14578", token));
