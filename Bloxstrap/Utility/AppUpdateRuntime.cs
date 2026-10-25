@@ -11,4 +11,6 @@ internal sealed record AppUpdateRuntime(
     Func<bool> ClientsRunning,
     Func<bool> SaveState,
     Func<IDisposable?> AcquireHandoff,
-    Func<ProcessStartInfo, bool> StartUpdater);
+    Func<ProcessStartInfo, bool> StartUpdater,
+    Action<string, string?, string> RecordDeferred,
+    Action ClearDeferred);

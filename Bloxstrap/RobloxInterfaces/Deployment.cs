@@ -42,7 +42,7 @@
             HttpStatusCode.NotFound
         };
 
-        private static readonly Dictionary<string, ClientVersion> ClientVersionCache = new();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, ClientVersion> ClientVersionCache = new();
 
         // a list of roblox deployment locations that we check for, in case one of them don't work
         // these are all weighted based on their priority, so that we pick the most optimal one that we can. 0 = highest
@@ -65,7 +65,7 @@
 
             try
             {
-                var response = await App.HttpClient.GetAsync($"{url}/versionStudio", token);
+                using var response = await App.HttpClient.GetAsync($"{url}/versionStudio", token);
 
                 response.EnsureSuccessStatusCode();
 
@@ -95,11 +95,11 @@
         /// Returns null for success.
         /// </summary>
         /// <returns></returns>
-        public static async Task<Exception?> InitializeConnectivity()
+        public static async Task<Exception?> InitializeConnectivity(CancellationToken token = default)
         {
             const string LOG_IDENT = "Deployment::InitializeConnectivity";
 
-            var tokenSource = new CancellationTokenSource();
+            using var tokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
 
             var exceptions = new List<Exception>();
             var tasks = (from entry in BaseUrls select TestConnection(entry.Key, entry.Value, tokenSource.Token)).ToList();
@@ -120,6 +120,7 @@
 
             // stop other running connectivity tests
             tokenSource.Cancel();
+            token.ThrowIfCancellationRequested();
 
             if (string.IsNullOrEmpty(BaseUrl))
             {
@@ -169,7 +170,7 @@
             return null;
         }
 
-        public static async Task<bool> IsChannelPrivate(string channel)
+        public static async Task<bool> IsChannelPrivate(string channel, CancellationToken token = default)
         {
 
             if (channel == "production")
@@ -177,31 +178,32 @@
 
             try
             {
-                var response = await App.HttpClient.GetAsync($"https://clientsettingscdn.{RobloxDomain}/v2/client-version/WindowsPlayer/channel/{channel}");
+                using var response = await App.HttpClient.GetAsync($"https://clientsettingscdn.{RobloxDomain}/v2/client-version/WindowsPlayer/channel/{channel}", token);
                 response.EnsureSuccessStatusCode();
             }
             catch (HttpRequestException ex)
             {
                 if (BadChannelCodes.Contains(ex.StatusCode))
                     return true;
+                throw;
             }
 
             return false;
         }
 
-        public static async Task<DateTime?> GetVersionTimestamp(string version)
+        public static async Task<DateTime?> GetVersionTimestamp(string version, CancellationToken token = default)
         {
             const string LOG_IDENT = "Deployment::GetVersionTimestamp";
             const string header = "last-modified";
 
             // since we arent getting the timestamp during launch there shouldnt be any collisions
             if (string.IsNullOrEmpty(BaseUrl))
-                await InitializeConnectivity();
+                await InitializeConnectivity(token);
 
             try
             {
                 string location = GetLocation($"/{version}-rbxPkgManifest.txt");
-                var response = await App.HttpClient.GetAsync(location);
+                using var response = await App.HttpClient.GetAsync(location, token);
                 response.EnsureSuccessStatusCode();
 
                 if (response.Content.Headers.TryGetValues(header, out var values))
@@ -221,9 +223,10 @@
             return null;
         }
 
-        public static async Task<ClientVersion> GetInfo(string? channel = null, bool behindProductionCheck = false, bool includeTimestamp = false)
+        public static async Task<ClientVersion> GetInfo(string? channel = null, bool behindProductionCheck = false, bool includeTimestamp = false, CancellationToken token = default)
         {
             const string LOG_IDENT = "Deployment::GetInfo";
+            token.ThrowIfCancellationRequested();
 
             if (String.IsNullOrEmpty(channel))
                 channel = Channel;
@@ -233,17 +236,6 @@
             App.Logger.WriteLine(LOG_IDENT, $"Getting deploy info for channel {channel}");
 
             string cacheKey = $"{channel}-{BinaryType}";
-
-            HttpRequestMessage request = new()
-            {
-                Method = HttpMethod.Get
-            };
-
-            if (!string.IsNullOrEmpty(ChannelToken))
-            {
-                App.Logger.WriteLine(LOG_IDENT, "Got Roblox-Channel-Token");
-                request.Headers.Add("Roblox-Channel-Token", ChannelToken);
-            }
 
             ClientVersion clientVersion;
 
@@ -259,25 +251,30 @@
                 if (!isDefaultChannel)
                     path = $"/v2/client-version/{BinaryType}/channel/{channel}";
 
+                async Task<ClientVersion> Fetch(string host)
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Get, "https://" + host + "." + RobloxDomain + path);
+                    if (!string.IsNullOrEmpty(ChannelToken)) request.Headers.Add("Roblox-Channel-Token", ChannelToken);
+                    return await Http.SendJson<ClientVersion>(request, token);
+                }
+
                 try
                 {
-                    request.RequestUri = new Uri("https://clientsettingscdn." + RobloxDomain + path);
-                    clientVersion = await Http.SendJson<ClientVersion>(request);
+                    clientVersion = await Fetch("clientsettingscdn");
                 }
                 catch (HttpRequestException httpEx) 
                 when (!isDefaultChannel && BadChannelCodes.Contains(httpEx.StatusCode))
                 {
                     throw new InvalidChannelException(httpEx.StatusCode);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     App.Logger.WriteLine(LOG_IDENT, "Failed to contact clientsettingscdn! Falling back to clientsettings...");
                     App.Logger.WriteException(LOG_IDENT, ex);
 
                     try
                     {
-                        request.RequestUri = new Uri("https://clientsettings." + RobloxDomain + path);
-                        clientVersion = await Http.SendJson<ClientVersion>(request);
+                        clientVersion = await Fetch("clientsettings");
                     }
                     catch (HttpRequestException httpEx)
                     when (!isDefaultChannel && BadChannelCodes.Contains(httpEx.StatusCode))
@@ -289,7 +286,7 @@
                 // check if channel is behind LIVE
                 if (!isDefaultChannel && behindProductionCheck)
                 {
-                    var defaultClientVersion = await GetInfo(DefaultChannel);
+                    var defaultClientVersion = await GetInfo(DefaultChannel, token: token);
 
                     if ((Utilities.CompareVersions(clientVersion.Version, defaultClientVersion.Version) == VersionComparison.LessThan))
                         clientVersion.IsBehindDefaultChannel = true;
@@ -301,7 +298,7 @@
             }
 
             if (includeTimestamp && clientVersion.Timestamp is null)
-                clientVersion.Timestamp = await GetVersionTimestamp(clientVersion.VersionGuid);
+                clientVersion.Timestamp = await GetVersionTimestamp(clientVersion.VersionGuid, token);
 
             return clientVersion;
         }

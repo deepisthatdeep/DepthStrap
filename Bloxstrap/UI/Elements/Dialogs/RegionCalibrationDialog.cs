@@ -42,6 +42,8 @@ namespace Bloxstrap.UI.Elements.Dialogs
             panel.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,8,0,0), Text = "Partial coverage gets one extra comparison pass. If fewer than two locations reply reliably on both routes, setup keeps your starting WARP state and explains the result. The manual WARP toggle remains available." });
             _status.Text = "Ready to test. No city is preselected. Play history will refine the measured preference.";
             panel.Children.Add(_status);
+            panel.Children.Add(new TextBlock { Text = RegionCalibrationService.PlayerPrerequisite, TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0,0,0,12), FontWeight = FontWeights.SemiBold });
             var start = new Button { Content = "Set up WARP and compare", Padding = new Thickness(12,6,12,6), Margin = new Thickness(0,0,8,0) };
             var direct = new Button { Content = "Test current route only", Padding = new Thickness(12,6,12,6) };
             start.Click += async (_, _) =>
@@ -67,6 +69,12 @@ namespace Bloxstrap.UI.Elements.Dialogs
                 var result = await RegionCalibrationService.RunComparisonAsync(_reset, setupWarp, progress, _cts.Token);
                 Frontend.ShowMessageBox(result.Status, result.SetupFinished ? MessageBoxImage.Information : MessageBoxImage.Warning);
                 _running = false; Close();
+            }
+            catch (NetworkComparisonUnavailableException ex)
+            {
+                _status.Text = ex.Message;
+                _running = false;
+                _actions.IsEnabled = true; _terms.IsEnabled = true;
             }
             catch (Exception ex)
             {

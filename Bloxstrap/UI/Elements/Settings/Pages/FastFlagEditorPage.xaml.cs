@@ -61,8 +61,9 @@ namespace Bloxstrap.UI.Elements.Settings.Pages
         {
             FlagGrid.CommitEdit();
             var picker = new SaveFileDialog { Filter = "JSON settings|*.json", FileName = "ClientAppSettings.json" };
-            if (picker.ShowDialog(Window.GetWindow(this)) == true) File.WriteAllText(picker.FileName, Json());
+            if (picker.ShowDialog(Window.GetWindow(this)) == true) ExportTo(picker.FileName);
         });
+        internal void ExportTo(string path) => AtomicFile.WriteText(path, Json());
         private void Copy_Click(object sender, RoutedEventArgs e) => Attempt(() => { FlagGrid.CommitEdit(); Clipboard.SetText(Json()); });
         private void Cell_EditEnding(object sender, DataGridCellEditEndingEventArgs e)
         {

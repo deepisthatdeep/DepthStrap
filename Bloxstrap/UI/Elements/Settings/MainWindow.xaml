@@ -10,7 +10,7 @@
              xmlns:dmodels="clr-namespace:Bloxstrap.UI.ViewModels.Settings"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance dmodels:MainWindowViewModel, IsDesignTimeCreatable=True}"
-             Title="{x:Static resources:Strings.Menu_Title}"
+             Title="DepthStrap"
              MinWidth="960"
              Width="1280"
              MinHeight="600"
@@ -41,7 +41,7 @@
             Message="{x:Static resources:Strings.Menu_SettingsSaved_Message}"
             Background="{DynamicResource ShellSurfaceBrush}" Icon="CheckmarkCircle24" Timeout="3000" MaxWidth="600" Margin="24,0,24,88" Grid.RowSpan="3" Panel.ZIndex="9" />
 
-        <ui:TitleBar Padding="8" x:Name="RootTitleBar" Grid.Row="0" ForceShutdown="False" MinimizeToTray="False" UseSnapLayout="True" Title="{x:Static resources:Strings.Menu_Title}" Icon="pack://application:,,,/DepthStrap.ico" />
+        <ui:TitleBar Padding="8" x:Name="RootTitleBar" Grid.Row="0" ForceShutdown="False" MinimizeToTray="False" UseSnapLayout="True" Title="DepthStrap" Icon="pack://application:,,,/DepthStrap.ico" />
 
         <Grid x:Name="RootGrid" Grid.Row="1" Margin="16,8,16,16" Visibility="Visible">
             <Grid.RowDefinitions>
@@ -84,7 +84,7 @@
                     <!-- Roblox launch behavior (split from old Bootstrapper/Behaviour page) -->
                     <ui:NavigationItem Content="Roblox Launch" PageType="{x:Type pages:AdvancedRobloxSettingsPage}" Icon="PlaySettings20" IconSize="20" Tag="advancedroblox" />
                     <!-- app-level settings (channel, static dir, cleaner, dialog customization) -->
-                    <ui:NavigationItem Content="DepthStrap Settings" PageType="{x:Type pages:DepthStrapSettingsPage}" Icon="Settings20" IconSize="20" Tag="depthstrapsettings" />
+                    <ui:NavigationItem Content="DepthStrap" PageType="{x:Type pages:DepthStrapSettingsPage}" Icon="Settings20" IconSize="20" Tag="depthstrapsettings" />
                     <ui:NavigationItem Content="Anti Api ( Beta )" PageType="{x:Type pages:AntiApiPage}" Icon="Toolbox24" IconSize="20" Tag="antiapi" />
                     <ui:NavigationItem Content="{x:Static resources:Strings.Menu_Appearance_Title}" PageType="{x:Type pages:AppearancePage}" Icon="PaintBrush24" IconSize="20" Tag="appearance" />
                 </ui:NavigationCompact.Items>

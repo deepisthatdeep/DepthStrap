@@ -35,6 +35,7 @@ internal static class AppUpdateFlowChecks
         internal Action? OnDownload;
         internal Action<ProcessStartInfo>? OnStart;
         internal ProcessStartInfo? Captured;
+        internal DeferredAppUpdate? Deferred;
         internal Fixture()
         {
             Directory.CreateDirectory(Root);
@@ -59,7 +60,9 @@ internal static class AppUpdateFlowChecks
                 "0.0.1", Path.Combine(Root, "updates"), true, () => Running,
                 () => { Saves++; return SaveSucceeds; },
                 () => { Acquisitions++; return LockAvailable ? new Lease(() => Releases++) : null; },
-                info => { Starts++; Captured = info; OnStart?.Invoke(info); return StartSucceeds; });
+                info => { Starts++; Captured = info; OnStart?.Invoke(info); return StartSucceeds; },
+                (installed, incoming, reason) => Deferred = new(installed, incoming, reason),
+                () => Deferred = null);
         }
         internal bool Run(CancellationToken token = default)
         { var task = AppUpdater.TryUpdateAsync(Runtime, token); HistoryChecks.Wait(task); return task.Result; }
@@ -121,6 +124,8 @@ internal static class AppUpdateFlowChecks
             f.SaveSucceeds = false;
             check(!f.Run() && f.Saves == 1 && f.Acquisitions == 0 && f.Starts == 0 && f.OriginalsIntact(),
                 "Failed state persistence keeps the current app running and never starts a replacement");
+            check(f.Deferred?.IncomingVersion is not null && f.Deferred.Reason.Contains("saved safely"),
+                "Failed state save provides an actionable deferred update status");
         }
         using (var f = new Fixture())
         {
@@ -131,6 +136,7 @@ internal static class AppUpdateFlowChecks
         {
             f.LockAvailable = false;
             check(!f.Run() && f.Starts == 0 && f.Releases == 0, "An unavailable handoff lease leaves the current app active");
+            check(f.Deferred?.Reason.Contains("update lock") == true, "Busy updater lease records its deferred status");
         }
         using (var f = new Fixture())
         {
@@ -143,6 +149,7 @@ internal static class AppUpdateFlowChecks
         {
             f.StartSucceeds = false;
             check(!f.Run() && f.Releases == 1, "A process start that returns no process never requests parent termination");
+            check(f.Deferred?.Reason.Contains("acknowledge") == true, "Unacknowledged updater startup records a deferred status");
         }
         using (var f = new Fixture())
         {
@@ -159,6 +166,14 @@ internal static class AppUpdateFlowChecks
         {
             f.ApiStatus = HttpStatusCode.TooManyRequests;
             check(!f.Run() && f.Queries == 1 && f.Downloads == 0 && f.OriginalsIntact(), "Rate-limited orchestration returns to the installed app without a download");
+            check(f.Deferred is { IncomingVersion: null, InstalledVersion: "0.0.1" },
+                "Failed release check records the installed version without inventing the incoming version");
+            f.ApiStatus = HttpStatusCode.OK;
+            f.Runtime = f.Runtime with { CurrentVersion = App.Version };
+            f.Tag = "invalid-release";
+            check(!f.Run() && f.Deferred is not null, "Invalid release metadata cannot clear a previous deferred notice");
+            f.Tag = "v" + App.Version;
+            check(!f.Run() && f.Deferred is null, "A valid current stable release clears a previous failed-check notice");
         }
         using (var f = new Fixture())
         using (var cancelled = new CancellationTokenSource())

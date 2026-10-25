@@ -4,8 +4,47 @@ using System.Windows.Input;
 
 namespace Bloxstrap.UI.ViewModels.Settings
 {
-    public class MainWindowViewModel : NotifyPropertyChangedViewModel
+    public class MainWindowViewModel : NotifyPropertyChangedViewModel, IDisposable
     {
+        private string _savedEditableSettings;
+
+        public MainWindowViewModel()
+        {
+            _savedEditableSettings = EditableSettingsSnapshot(App.Settings.Prop);
+            App.Settings.Saved += SettingsPersisted;
+        }
+
+        private void SettingsPersisted(string json) =>
+            _savedEditableSettings = EditableSettingsSnapshot(JsonSerializer.Deserialize<Models.Persistable.Settings>(json)!);
+
+        public void Dispose() => App.Settings.Saved -= SettingsPersisted;
+
+        internal bool HasUnsavedSettingsChanges => _savedEditableSettings != EditableSettingsSnapshot(App.Settings.Prop);
+
+        internal bool ConfirmDiscardChanges(Func<bool> confirmDiscard) =>
+            !(HasUnsavedSettingsChanges || App.FastFlags.Changed || App.PendingSettingTasks.Any()) || confirmDiscard();
+
+        internal static string EditableSettingsSnapshot(Models.Persistable.Settings settings)
+        {
+            var snapshot = JsonSerializer.SerializeToNode(settings)!.AsObject();
+            foreach (string name in new[] { nameof(settings.AppearanceVersion), nameof(settings.NetworkSetupVersion),
+                nameof(settings.SystemPerformanceOfferShown), nameof(settings.RegionCalibrationCompleted),
+                nameof(settings.RegionMonitoringVersion), nameof(settings.IsNavigationSidebarExpanded) })
+                snapshot.Remove(name);
+            if (settings.AdaptiveRegionPreferencesEnabled)
+            {
+                snapshot.Remove(nameof(settings.CompetitivePreferredCity));
+                snapshot.Remove(nameof(settings.CompetitiveFallbackCities));
+            }
+            if (settings.AutomaticRegionalPreference)
+            {
+                snapshot.Remove(nameof(settings.PreferNorthAmericaOnly));
+                snapshot.Remove(nameof(settings.PreferEuropeOnly));
+            }
+            if (settings.MatchFpsToMonitorRefreshRate) snapshot.Remove(nameof(settings.CompetitiveFpsCap));
+            return snapshot.ToJsonString();
+        }
+
         public ICommand OpenAboutCommand => new RelayCommand(OpenAbout);
         public ICommand SaveSettingsCommand => new RelayCommand(SaveSettings);
         public ICommand SaveAndLaunchPlayerCommand => new RelayCommand(() => SaveAndLaunch("player"));

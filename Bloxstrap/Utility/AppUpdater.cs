@@ -176,8 +176,47 @@ public static class AppUpdater
         Version.TryParse(installed, out var existing) && Version.TryParse(incoming, out var next) &&
         Normalize(next) < Normalize(existing);
 
+    internal static string DescribeReplacementFailure(string destination, Exception error)
+    {
+        if ((error.HResult & 0xffff) is 32 or 33)
+            return "The installed executable is busy (Windows sharing or lock violation). Close other DepthStrap windows and retry.";
+        try
+        {
+            if ((File.GetAttributes(destination) & FileAttributes.ReadOnly) != 0)
+                return "The installed executable is read-only. Review its file properties before retrying.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        if (error is UnauthorizedAccessException || (error.HResult & 0xffff) == 5)
+            return "Windows denied access to the installed executable. Check file permissions and security-software history; the cause is not confirmed.";
+        return $"The executable could not be replaced (Windows error {error.HResult & 0xffff}). Check the app log and retry.";
+    }
+
+    internal static void RecordDeferredUpdate(string? installed, string? incoming, string reason)
+    {
+        App.State.Prop.DeferredAppUpdate = new(installed ?? "unknown", incoming, reason);
+        App.Logger.WriteLine("AppUpdater", $"Update deferred. Installed: {installed ?? "unknown"}; incoming: {incoming ?? "unknown"}. {reason}");
+        if (App.State.Loaded) App.State.TrySave();
+    }
+
+    internal static void ClearDeferredUpdate()
+    {
+        if (App.State.Prop.DeferredAppUpdate is null) return;
+        App.State.Prop.DeferredAppUpdate = null;
+        if (App.State.Loaded) App.State.TrySave();
+    }
+
+    internal static string UpdateStatus(string current, DeferredAppUpdate? deferred)
+    {
+        if (deferred is null || (Version.TryParse(current, out var running) &&
+            Version.TryParse(deferred.IncomingVersion?.TrimStart('v'), out var incoming) && Normalize(running) >= Normalize(incoming)))
+            return $"Installed DepthStrap version: {current}.";
+        return $"Update deferred. Installed: {current}; incoming: {deferred.IncomingVersion ?? "not determined"}. {deferred.Reason} Your installed app was kept. DepthStrap retries on a later eligible startup.";
+    }
+
     public static void ReplaceExecutable(string source, string destination)
     {
+        if (File.Exists(destination) && (File.GetAttributes(destination) & FileAttributes.ReadOnly) != 0)
+            throw new UnauthorizedAccessException("The installed executable is read-only.");
         string staged = destination + "." + Guid.NewGuid().ToString("N") + ".new";
         try
         {
@@ -212,12 +251,13 @@ public static class AppUpdater
             App.Version, Paths.TempUpdates,
             App.Settings.Loaded && !App.Settings.LastLoadFailed && App.State.Loaded && !App.State.LastLoadFailed,
             ClientsRunning, () => App.Settings.TrySave() && App.State.TrySave(), AcquireHandoff,
-            info => AppUpdateHandoff.Start(info)));
+            info => AppUpdateHandoff.Start(info), RecordDeferredUpdate, ClearDeferredUpdate));
     }
 
     internal static async Task<bool> TryUpdateAsync(AppUpdateRuntime runtime, CancellationToken token = default)
     {
         const string log = "AppUpdater";
+        AppUpdatePlan? plan = null;
         try
         {
             if (!runtime.StorageAvailable || !ShouldCheck(runtime.Settings, runtime.Launch, runtime.ClientsRunning())) return false;
@@ -227,8 +267,15 @@ public static class AppUpdater
             using var queryTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
             queryTimeout.CancelAfter(TimeSpan.FromSeconds(25));
             var release = await FetchReleaseAsync(runtime.Client, queryTimeout.Token);
-            var plan = SelectRelease(release, runtime.CurrentVersion);
-            if (plan is null) return false;
+            plan = SelectRelease(release, runtime.CurrentVersion);
+            if (plan is null)
+            {
+                // Only a valid stable release can clear a previous failed-check notice.
+                var available = SelectRelease(release, "0.0.0");
+                if (available is not null && Version.TryParse(runtime.CurrentVersion, out var current) && available.Version <= Normalize(current))
+                    runtime.ClearDeferred();
+                return false;
+            }
             App.Logger.WriteLine(log, $"Downloading verified stable release {plan.Tag}.");
             using var downloadTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
             downloadTimeout.CancelAfter(TimeSpan.FromMinutes(10));
@@ -236,15 +283,28 @@ public static class AppUpdater
             if (!IsInstalledVersion(path, plan.Version.ToString()))
                 throw new InvalidDataException("Update executable does not match the advertised DepthStrap version.");
             token.ThrowIfCancellationRequested();
-            if (!ShouldCheck(runtime.Settings, runtime.Launch, runtime.ClientsRunning()) || !runtime.SaveState()) return false;
-            using var handoff = runtime.AcquireHandoff();
-            if (handoff is null) return false;
             if (!ShouldCheck(runtime.Settings, runtime.Launch, runtime.ClientsRunning())) return false;
-            return runtime.StartUpdater(StartInfo(path, runtime.Launch.Args));
+            if (!runtime.SaveState())
+            {
+                runtime.RecordDeferred(runtime.CurrentVersion, plan.Version.ToString(), "Settings could not be saved safely before the update.");
+                return false;
+            }
+            using var handoff = runtime.AcquireHandoff();
+            if (handoff is null)
+            {
+                runtime.RecordDeferred(runtime.CurrentVersion, plan.Version.ToString(), "Another app update holds the update lock.");
+                return false;
+            }
+            if (!ShouldCheck(runtime.Settings, runtime.Launch, runtime.ClientsRunning())) return false;
+            bool started = runtime.StartUpdater(StartInfo(path, runtime.Launch.Args));
+            if (!started) runtime.RecordDeferred(runtime.CurrentVersion, plan.Version.ToString(), "The downloaded updater did not acknowledge startup.");
+            return started;
         }
         catch (Exception ex)
         {
-            App.Logger.WriteLine(log, "App update deferred; continuing with the installed version.");
+            runtime.RecordDeferred(runtime.CurrentVersion, plan?.Version.ToString(),
+                ex is OperationCanceledException ? "The update check or download was cancelled or timed out." :
+                "The update check, download or handoff failed. Check the app log for details.");
             App.Logger.WriteException(log, ex);
             return false;
         }

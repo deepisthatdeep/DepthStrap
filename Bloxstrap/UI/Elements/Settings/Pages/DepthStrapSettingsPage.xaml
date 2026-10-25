@@ -25,6 +25,9 @@
             <ui:Button Content="Profiles / restore" Click="SystemPerformance_Click" />
         </controls:OptionControl>
 
+        <TextBlock x:Name="AppUpdateStatus" Text="{Binding AppUpdateStatus}" TextWrapping="Wrap"
+                   Margin="0,12,0,6" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+
         <StackPanel DataContext="{Binding Channel}">
             <controls:OptionControl Header="Automatic DepthStrap updates" Description="Install verified stable GitHub releases when DepthStrap opens. Updates wait until Roblox and Studio are closed. Your settings are kept. Only DepthStrap updates; Roblox update settings stay unchanged.">
                 <ui:ToggleSwitch IsChecked="{Binding AutomaticDepthStrapUpdates, Mode=TwoWay}" />

@@ -146,6 +146,7 @@
                 </controls:OptionControl>
                 <controls:OptionControl Header="Network comparison" Description="Disconnect other VPNs and proxies first. Compare normal routing against WARP after moving or changing your connection.">
                     <StackPanel Width="240">
+                        <TextBlock Text="{Binding NetworkComparisonPrerequisite}" TextWrapping="Wrap" Margin="0,0,0,8" />
                         <ui:Button Content="Compare normal / WARP" Command="{Binding RecalibrateRegionsCommand}" Padding="12,6" />
                         <TextBlock Text="{Binding CalibrationStatus}" TextWrapping="Wrap" Margin="0,8,0,0" />
                     </StackPanel>

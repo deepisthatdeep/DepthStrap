@@ -7,9 +7,20 @@ namespace Bloxstrap.UI.ViewModels.Settings
 {
     public class ChannelViewModel : NotifyPropertyChangedViewModel
     {
-        public ChannelViewModel()
+        private readonly Func<string, CancellationToken, Task<(ClientVersion Info, bool IsPrivate)>> _lookup;
+        private readonly TimeSpan _lookupTimeout;
+        private CancellationTokenSource? _lookupCancellation;
+        internal Task CurrentLookup { get; private set; } = Task.CompletedTask;
+
+        public ChannelViewModel() : this(FetchChannelInfoAsync, TimeSpan.FromSeconds(20))
         {
-            Task.Run(() => LoadChannelDeployInfo(App.Settings.Prop.Channel));
+            CurrentLookup = LoadChannelDeployInfo(App.Settings.Prop.Channel);
+        }
+
+        internal ChannelViewModel(Func<string, CancellationToken, Task<(ClientVersion Info, bool IsPrivate)>> lookup, TimeSpan timeout)
+        {
+            _lookup = lookup;
+            _lookupTimeout = timeout;
         }
 
         public bool AutomaticDepthStrapUpdates
@@ -19,58 +30,78 @@ namespace Bloxstrap.UI.ViewModels.Settings
         }
         public bool IsRobloxInstallationMissing => !App.IsPlayerInstalled && !App.IsStudioInstalled;
 
+        private static async Task<(ClientVersion Info, bool IsPrivate)> FetchChannelInfoAsync(string channel, CancellationToken token)
+        {
+            bool isPrivate = await Deployment.IsChannelPrivate(channel, token);
+            if (App.Cookies.Loaded && isPrivate && string.IsNullOrEmpty(Deployment.ChannelToken))
+            {
+                UserChannel? userChannel = await Deployment.GetUserChannel("WindowsPlayer").WaitAsync(token);
+                token.ThrowIfCancellationRequested();
+                if (userChannel?.Token is not null) Deployment.ChannelToken = userChannel.Token;
+            }
+            return (await Deployment.GetInfo(channel, true, true, token), isPrivate);
+        }
+
         private async Task LoadChannelDeployInfo(string channel)
         {
+            _lookupCancellation?.Cancel();
+            using var cancellation = new CancellationTokenSource(_lookupTimeout);
+            _lookupCancellation = cancellation;
             ShowLoadingError = false;
-            OnPropertyChanged(nameof(ShowLoadingError));
-
+            ShowChannelWarning = false;
             ChannelInfoLoadingText = Strings.Menu_Channel_Switcher_Fetching;
-            OnPropertyChanged(nameof(ChannelInfoLoadingText));
-
             ChannelDeployInfo = null;
-            OnPropertyChanged(nameof(ChannelDeployInfo));
+            NotifyLookupState();
 
             try
             {
-                bool isPrivate = await Deployment.IsChannelPrivate(channel);
-                if (App.Cookies.Loaded && isPrivate && string.IsNullOrEmpty(Deployment.ChannelToken))
+                if (string.IsNullOrWhiteSpace(channel))
                 {
-                    UserChannel? userChannel = await Deployment.GetUserChannel("WindowsPlayer");
-
-                    if (userChannel?.Token is not null)
-                        Deployment.ChannelToken = userChannel.Token;
+                    ShowLoadingError = true;
+                    ChannelInfoLoadingText = "Enter a channel name.";
+                    return;
                 }
-
-                ClientVersion info = await Deployment.GetInfo(channel, true, true);
-
+                var (info, isPrivate) = await _lookup(channel, cancellation.Token).WaitAsync(cancellation.Token);
+                if (_lookupCancellation != cancellation) return;
                 ShowChannelWarning = info.IsBehindDefaultChannel;
-                OnPropertyChanged(nameof(ShowChannelWarning));
-
                 ChannelDeployInfo = new DeployInfo
                 {
                     Version = info.Version,
                     VersionGuid = isPrivate ? "version-private" : info.VersionGuid, // we dont want to return the hash of private channels for obvious reason
                     Timestamp = info.Timestamp?.ToLocalTime().ToString() ?? "?"
                 };
-
                 App.State.Prop.IgnoreOutdatedChannel = true;
-
-                OnPropertyChanged(nameof(ChannelDeployInfo));
             }
-            catch (InvalidChannelException ex)
+            catch (Exception ex)
             {
+                if (_lookupCancellation != cancellation) return;
                 ShowLoadingError = true;
-                OnPropertyChanged(nameof(ShowLoadingError));
-
-                if (ex.StatusCode == HttpStatusCode.Unauthorized)
-                    ChannelInfoLoadingText = Strings.Menu_Channel_Switcher_Unauthorized;
-                else
-                    ChannelInfoLoadingText = $"An http error has occured ({ex.StatusCode})";
-
-                OnPropertyChanged(nameof(ChannelInfoLoadingText));
+                ChannelInfoLoadingText = ex switch
+                {
+                    OperationCanceledException => "Channel lookup timed out. Check your connection and retry.",
+                    InvalidChannelException { StatusCode: HttpStatusCode.Unauthorized } => Strings.Menu_Channel_Switcher_Unauthorized,
+                    InvalidChannelException invalid => $"Could not load this channel (HTTP {(int?)invalid.StatusCode}).",
+                    _ => "Could not load channel details. Check your connection and retry."
+                };
+                if (ex is not OperationCanceledException) App.Logger.WriteException("ChannelViewModel::Load", ex);
+            }
+            finally
+            {
+                if (_lookupCancellation == cancellation)
+                {
+                    _lookupCancellation = null;
+                    NotifyLookupState();
+                }
             }
         }
 
+        private void NotifyLookupState()
+        {
+            OnPropertyChanged(nameof(ShowLoadingError));
+            OnPropertyChanged(nameof(ShowChannelWarning));
+            OnPropertyChanged(nameof(ChannelInfoLoadingText));
+            OnPropertyChanged(nameof(ChannelDeployInfo));
+        }
         public bool ShowLoadingError { get; set; } = false;
         public bool ShowChannelWarning { get; set; } = false;
 
@@ -82,10 +113,10 @@ namespace Bloxstrap.UI.ViewModels.Settings
             get => App.Settings.Prop.Channel;
             set
             {
-                value = value.Trim();
-                Task.Run(() => LoadChannelDeployInfo(value));
+                value = (value ?? "").Trim();
 
-                if (value.ToLower() == "live" || value.ToLower() == "zlive")
+
+                if (value.Equals("live", StringComparison.OrdinalIgnoreCase) || value.Equals("zlive", StringComparison.OrdinalIgnoreCase))
                 {
                     App.Settings.Prop.Channel = Deployment.DefaultChannel;
                 }
@@ -93,6 +124,8 @@ namespace Bloxstrap.UI.ViewModels.Settings
                 {
                     App.Settings.Prop.Channel = value;
                 }
+                CurrentLookup = LoadChannelDeployInfo(App.Settings.Prop.Channel);
+                OnPropertyChanged(nameof(ViewChannel));
             }
         }
 

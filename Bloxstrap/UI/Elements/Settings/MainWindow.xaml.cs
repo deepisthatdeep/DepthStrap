@@ -154,13 +154,9 @@ namespace Bloxstrap.UI.Elements.Settings
         private void WpfUiWindow_Closing(object sender, CancelEventArgs e)
         {
             if (App.CompleteUninstallHandoff) return;
-            if (App.FastFlags.Changed || App.PendingSettingTasks.Any())
-            {
-                var result = Frontend.ShowMessageBox(Strings.Menu_UnsavedChanges, MessageBoxImage.Warning, MessageBoxButton.YesNo);
-
-                if (result != MessageBoxResult.Yes)
-                    e.Cancel = true;
-            }
+            if (!viewModel.ConfirmDiscardChanges(() => Frontend.ShowMessageBox(Strings.Menu_UnsavedChanges,
+                MessageBoxImage.Warning, MessageBoxButton.YesNo) == MessageBoxResult.Yes))
+                e.Cancel = true;
 
             _state.Width = this.Width;
             _state.Height = this.Height;
@@ -173,6 +169,7 @@ namespace Bloxstrap.UI.Elements.Settings
 
         private void WpfUiWindow_Closed(object sender, EventArgs e)
         {
+            viewModel.Dispose();
             if (App.CompleteUninstallHandoff) return;
             if (App.LaunchSettings.TestModeFlag.Active)
                 LaunchHandler.LaunchRoblox(LaunchMode.Player);

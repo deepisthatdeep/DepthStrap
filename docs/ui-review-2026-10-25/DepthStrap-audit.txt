@@ -1,66 +1,47 @@
-DEPTHSTRAP — UI REBUILD AND REAUDIT
+DEPTHSTRAP — UI REBUILD AND IMPLEMENTED AUDIT FIXES
 October 25, 2026
 
 Scope
-Normal DepthStrap, the Windows Roblox app at https://github.com/deepisthatdeep/DepthStrap.
-Source baseline: main commit 71a4d3a, published version 1.2.4.
-This is a local UI review candidate, not a new public release. Its executable retains version 1.2.4.
+Normal DepthStrap at https://github.com/deepisthatdeep/DepthStrap.
+Base: main commit 71a4d3a, version 1.2.4. This is a review branch, not a new stable release.
+The existing Crimson Contract art remains. All seven destinations and themes remain. The app settings label and window title now read DepthStrap.
 
-UI work
-The rebuilt settings window enhances the existing Crimson Contract artwork with an illustrated banner, translucent framed panels, clearer navigation, and one primary Save & Launch action. Existing theme choices remain. Advanced Roblox sections are expandable; shared setting rows stack their editor beneath the description when space is limited. Global graphics/input/accessibility cards use two readable columns. Saved window bounds fit an actual monitor work area, including negative coordinates, smaller secondary monitors, and gaps between monitors. The Player/Studio option description now matches its actual behavior. Popup launch commands bind explicitly to their launch button's view model.
+Historical evidence
+The initial audit inspected 17 runtime logs: 16 dated October 16–17 and one temporary uninstall log dated October 20. No October 25 normal-app runtime logs were available, and the installed executable and Settings.json were absent. These logs establish historical failures, not live verification of the new fixes.
 
-All seven navigation destinations remain. Recovery, launch, update, network, and settings-storage services were not changed. Artwork was reused, not replaced. No dependency was added.
+1. Normal uninstall truthfulness and cleanup isolation — IMPLEMENTED
+The October 20 log recorded malformed-shortcut and missing-directory errors followed by a success message and exit 0. Installer.DoUninstall now returns an explicit outcome. Independent owned-item failures are collected while later safe cleanup continues; real cleanup failures produce a failure exit code. Already-missing optional directories succeed. Shortcut matching accepts .LNK regardless of case, catches each parse failure separately, and preserves unknown or unrelated shortcuts. Unknown residual files are retained instead of wildcard deletion.
+Deferred removal uses a hidden helper with exact literal paths. The executable must be removed before its uninstall registration. The UI reports scheduled deletion as unverified, not completed removal. Failed executable deletion retains the registration. Normal uninstall remains distinct from Complete wipe.
+Proof: disposable malformed, owned, unrelated and uppercase shortcuts; missing directories; real read-only denial; continued cleanup; quoted paths; disposable registry keys; helper success/failure ordering. No real uninstall was run.
 
-Logs inspected
-17 runtime log files: 16 under the local DepthStrap log directory, dated October 16–17, and one temporary uninstall log dated October 20. The newest evidence is the October 20 uninstall; no October 25 runtime logs were available. The installed executable and Settings.json were absent at inspection. Historical release-audit records are not counted as verification of this candidate.
+2. Unsaved app settings — IMPLEMENTED
+The settings window compares editable settings with its opening/last-successful-save snapshot. App-only updates/theme changes now enter the existing discard confirmation. Cancel preserves the window. A successful save updates the baseline from the exact persisted JSON; failed saves do not clear it. Learned automatic regions, automatic FPS and migration/layout status are excluded. Manual city and FPS changes remain tracked. The window detaches its save subscription on close.
+Proof: update-only/theme-only changes, cancel/discard, revert, successful/failed saves, automatic-field exclusions and manual edits.
 
-Ranked fixes to build next
+3. Channel lookup lifetime — IMPLEMENTED
+Lookups cancel previous requests, use a 20-second bound, expose their observed task, and commit results only for the current request. Empty input, invalid channel, timeout and transport failure have terminal messages. Cancellation reaches shared deployment HTTP calls; fallback creates a fresh request and response handles are disposed. Private-channel hashes stay masked, and live/zlive aliases remain supported.
+Proof: reversed A/B completion, predecessor cancellation, transport and timeout errors, empty input, private-channel masking and aliases.
 
-1. P1 — Normal uninstall can claim success after incomplete cleanup.
-Observed in the October 20 v1.2.4 log: two cleanup exceptions, followed by “DepthStrap has successfully uninstalled” and exit code 0.
-Cause: Installer.DoUninstall catches cleanup exceptions without returning an outcome. LaunchHandler then reports success unconditionally.
-Evidence: Bloxstrap/Installer.cs:423–433; Bloxstrap/LaunchHandler.cs:187–191. Temporary log DepthStrap_20261020T193801Z_29920_92012b0add6f4decaead12c422ac199b.log:27–41.
-Fix: Collect failures, continue safe cleanup, and report partial removal when owned items remain. Treat already-missing optional directories as complete. Do not certify delayed executable deletion before it finishes.
-Shortcut subcase: the same log records “The LNK Header Size is 0 is incorrect (expected 76)”. One malformed shortcut aborts the entire shortcut loop (Installer.cs:378–384). Match .lnk case-insensitively, handle each file separately, and preserve shortcuts whose ownership cannot be established.
-Test: Disposable files only. A malformed/unrelated shortcut survives; later owned shortcuts are processed; missing folders succeed; denied owned items produce a partial result.
+4. Server-history lifetime — IMPLEMENTED
+Named watcher handlers are detached when the window closes. Old row-delete handlers are detached on refresh/disposal. Request generations reject stale results/errors and in-flight completion after disposal; later watcher notifications cannot reload a closed model.
+Proof: repeated create/dispose cycles, collectible retired models, actual window Closed disposal, stale completion, one delete handler per row and no work from disposed rows/models.
 
-2. P2 — Closing can silently discard app-only settings changes.
-Source evidence: ChannelViewModel.cs:15–18 changes the automatic-update setting in memory. MainWindow's close guard checks only FastFlags and queued setting tasks; it saves State, not Settings. SoftTerminate/OnExit do not save Settings. Theme edits have the same direct-close path.
-Fix: Compare editable settings against the last successful save and include them in the existing discard confirmation. Avoid treating background learned values as user edits.
-Test: Change only the update toggle or theme, close, and verify confirmation. Cancel keeps the window; a successful Save clears the dirty state.
+5. Atomic FastFlags export — IMPLEMENTED
+Export reuses AtomicFile.WriteText and retains its existing error display. Failed replacement preserves the previous destination bytes and removes staging files.
+Proof: escaped JSON round-trip and read-only replacement failure against disposable exports.
 
-3. P2 — Channel lookup can leave a spinner or display an older request's result.
-Source evidence: Bloxstrap/UI/ViewModels/Settings/ChannelViewModel.cs:12,24–77,86. Fire-and-forget requests catch only InvalidChannelException and have no latest-request guard. Timeout/transport exceptions may fault the discarded task; an older completion can overwrite newer selection details.
-Fix: Observe bounded requests, provide terminal error states, and accept results only from the latest request.
-Test: Controlled A/B requests completed in reverse order, followed by timeout and transport-failure cases.
+6. Deferred update diagnostics — IMPLEMENTED
+The DepthStrap page displays the installed version and any persisted deferred update notice, including the incoming version when known. Replacement diagnostics distinguish Windows sharing/lock violations, a read-only executable, unresolved access denial, and other Windows errors. Automatic replacement preserves read-only attributes. No process is terminated to force replacement. Failed checks/saves/handoffs produce status; a valid up-to-date stable response clears a previous failed-check notice. Invalid metadata cannot clear it.
+Proof: diagnostic cases, preserved read-only bytes/attributes, serialization and stale-warning suppression, fail-then-current lookup, failed persistence/handoff statuses, plus existing updater replacement/download/handoff tests.
+The two historical UnauthorizedAccessException logs do not establish whether a lock, ACL, antivirus or another cause was responsible. The new diagnostics improve future evidence; they do not invent a retrospective cause. An older installed binary cannot display UI added only in this candidate.
 
-4. P2 — Closed server-history windows remain subscribed.
-Source evidence: Bloxstrap/UI/ViewModels/ContextMenu/ServerHistoryViewModel.cs:27–28 uses anonymous watcher handlers with no detach. ServerHistory.xaml.cs has no Closed cleanup. Reopening creates more retained view models and repeated reload work.
-Fix: Named handlers, disposal on Closed, and cancellation/ignore logic for an in-flight reload.
-Test: Repeated create/dispose cycles; only the live model reloads and old instances become collectible.
+7. Early-exit post-launch helpers — IMPLEMENTED
+The launcher captures the original process start time and sends it with the PID. The helper validates name and start time, holds that original process handle across its delay, treats absent/exited processes as normal completion, and disposes handles. Existing PID-only helper arguments remain compatible with name validation and handle retention. Genuine access errors remain visible.
+Proof: missing/early-exit processes, wrong name/start time, malformed/null identity arguments, legacy parsing and native handle disposal. No Roblox process was launched or modified.
 
-5. P2 — FastFlags export can truncate an existing export on write failure.
-Source evidence: Bloxstrap/UI/Elements/Settings/Pages/FastFlagEditorPage.xaml.cs:64 uses File.WriteAllText. Bloxstrap/Utility/AtomicFile.cs already supplies staged atomic text replacement.
-Fix: Reuse AtomicFile.WriteText and retain the existing error display.
-Test: Successful JSON round-trip plus a failed replacement preserving previous bytes.
+8. Network comparison prerequisite — IMPLEMENTED
+The running-game prerequisite appears beside the action and in the comparison dialog. The backend still rechecks before clearing history or changing routes. Running-player and competing-operation refusals log status without exception stacks; controls remain available for retry. All enumerated process handles are disposed.
+Proof: injected running-player and occupied-operation gate cases, unchanged calibration sentinel, one status log, gate release and matching prerequisite copy. No real route or adapter changes occurred.
 
-6. Investigation — Two updates could not replace the installed executable.
-Observed October 16: UnauthorizedAccessException during replacement; bounded retries ended with “App update deferred: the installed executable is still unavailable after bounded retries.” Existing behavior preserved the installed app.
-Evidence: installed log suffixes 4dcd7807892e4288a23d7697265c8534:19–24 and f69286fe3fbf4ddc93d587ddd1b9ba69:24–29; Bloxstrap/Utility/AppUpdater.cs:179–197.
-Proposal: Show installed/incoming versions and a visible deferred-update status. Distinguish a busy file from read-only/permission denial in diagnostics. The logs do not prove antivirus, ACLs, or another process caused the failure. Do not add indiscriminate process termination.
-
-7. P3 — Ordinary early exits create misleading worker errors.
-Two October 16 helpers waited 20 seconds and then tried to resolve an already-exited Roblox PID. LaunchHandler.cs:399–440 logs this as a worker error.
-Proposal: Treat absent processes as normal completion, dispose handles, and verify process identity before changing priority. Keep real access failures visible.
-
-8. UX — Network comparison's running-game guard needs clearer presentation.
-Four October 16 attempts correctly refused while Roblox ran. RegionCalibrationService.cs:22–23 protects against switching routes during gameplay.
-Proposal: Show the precondition beside the action, keep the backend recheck, and log this expected refusal as status instead of a stack-trace error. Do not remove the safety guard.
-
-Priorities
-Fix uninstall truthfulness and cleanup isolation first. Then protect unsaved settings and make asynchronous channel/history lifetimes reliable. Atomic export is a small data-preservation fix. Add update status and quieter expected-failure logging afterward. Keep standard uninstall distinct from the destructive all-user complete wipe.
-
-Proof boundary
-See verification.txt for this candidate's completed build, test, layout, dependency, and package checks. The findings above are either observed historical runtime failures or source-supported mechanisms, as labeled; the proposed backend fixes were not implemented. This is a focused audit plus regression validation, not an assertion that every application path is defect-free.
-
-No real Roblox launch, gameplay, uninstall, browser-cookie deletion, WARP switch, physical adapter change, installation, or public publication was performed. Desktop automation was not used. Live mixed-DPI placement and native gameplay remain unverified. The executable is unsigned. A production release should follow the corrective work and the repository's full release gates.
+Verification and limits
+See verification.txt. Tests cover controlled inputs, disposable files/registry keys and simulated adapters. WPF renders check layout and bindings; they are not live installed-app screenshots. Native gameplay, actual installation/uninstall, WARP switching, physical adapter changes and mixed-DPI monitor behavior remain unverified. The executable remains unsigned and version 1.2.4. The full production release gate has not been run, and no stable release is published by this source update.

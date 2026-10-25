@@ -17,7 +17,7 @@ namespace Bloxstrap.UI.Elements.Settings.Pages
             DataContext = new DepthStrapSettingsViewModel(this);
             InitializeComponent();
 
-            App.FrostRPC?.SetPage("DepthStrap Settings");
+            App.FrostRPC?.SetPage("DepthStrap");
         }
 
         private void OpenChannelListDialog_Click(object sender, RoutedEventArgs e)

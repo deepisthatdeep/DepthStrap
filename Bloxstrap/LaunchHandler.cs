@@ -184,11 +184,11 @@ namespace Bloxstrap
                 return;
             }
 
-            Installer.DoUninstall(keepData);
-
-            Frontend.ShowMessageBox(Strings.Bootstrapper_SuccessfullyUninstalled, MessageBoxImage.Information);
-
-            App.Terminate();
+            var outcome = Installer.DoUninstall(keepData);
+            if (!outcome.Cancelled)
+                Frontend.ShowMessageBox(outcome.Message,
+                    outcome.Failures.Count > 0 || outcome.UncheckedShortcuts > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+            App.Terminate(outcome.ExitCode);
         }
 
         public static void LaunchSettings()
@@ -389,7 +389,7 @@ namespace Bloxstrap
         {
             const string LOG_IDENT = "LaunchHandler::LaunchPostLaunch";
 
-            if (!int.TryParse(App.LaunchSettings.PostLaunchFlag.Data, out int robloxPid))
+            if (!PostLaunchProcess.TryParseIdentity(App.LaunchSettings.PostLaunchFlag.Data, out int robloxPid, out long? started))
             {
                 App.Logger.WriteLine(LOG_IDENT, "Failed to parse Roblox PID");
                 App.Terminate();
@@ -398,13 +398,20 @@ namespace Bloxstrap
 
             Task.Run(async () =>
             {
-                await Task.Delay(20000);
-
+                Process? proc = null;
                 try
                 {
-                    var proc = Process.GetProcessById(robloxPid);
-                    if (!proc.HasExited)
+                    proc = PostLaunchProcess.Open(robloxPid, Path.GetFileNameWithoutExtension(App.RobloxPlayerAppName), started);
+                    if (proc is null)
+                        App.Logger.WriteLine(LOG_IDENT, "The original Roblox process is no longer available; post-launch work is complete.");
+                    else
                     {
+                        await Task.Delay(20000);
+                        if (proc.HasExited)
+                        {
+                            App.Logger.WriteLine(LOG_IDENT, "Roblox exited before post-launch work was needed.");
+                            return;
+                        }
                         // Competitive Mode owns priority via its immediate + delayed reapply passes.
                         // Only apply the legacy selected priority when competitive is not active,
                         // so the two systems never fight over the process class.
@@ -430,19 +437,27 @@ namespace Bloxstrap
                         {
                             foreach (var crashProc in Process.GetProcessesByName("RobloxCrashHandler"))
                             {
-                                try { crashProc.Kill(); } catch { }
+                                using (crashProc)
+                                    try { if (!crashProc.HasExited) crashProc.Kill(); } catch { }
                             }
                         }
                     }
+                }
+                catch (InvalidOperationException) when (proc?.HasExited == true)
+                {
+                    App.Logger.WriteLine(LOG_IDENT, "Roblox exited during post-launch work.");
                 }
                 catch (Exception ex)
                 {
                     App.Logger.WriteLine(LOG_IDENT, $"Worker error: {ex.Message}");
                 }
-
-                // do this so that if the watcher is open, it dosent close
-                if (!App.LaunchSettings.WatcherFlag.Active)
-                    App.Terminate();
+                finally
+                {
+                    proc?.Dispose();
+                    // do this so that if the watcher is open, it dosent close
+                    if (!App.LaunchSettings.WatcherFlag.Active)
+                        App.Terminate();
+                }
             });
         }
 

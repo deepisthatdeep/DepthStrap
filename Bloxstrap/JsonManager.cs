@@ -24,6 +24,7 @@ namespace Bloxstrap
         public bool Loaded { get; protected set; } = false;
         public bool LastLoadFailed { get; private set; }
         public bool LastSaveSucceeded { get; private set; }
+        internal event Action<string>? Saved;
 
         public virtual string ClassName { get; }
 
@@ -122,13 +123,14 @@ namespace Bloxstrap
         {
             string LOG_IDENT = $"{LOG_IDENT_CLASS}::Save";
             LastSaveSucceeded = false;
+            string contents;
             
             App.Logger.WriteLine(LOG_IDENT, $"Saving to {FileLocation}...");
 
             try
             {
                 if (LastLoadFailed) throw new IOException("The original settings could not be read. Retry loading or repair the file before saving; it has been preserved.");
-                string contents = JsonSerializer.Serialize(Prop, new JsonSerializerOptions { WriteIndented = true });
+                contents = JsonSerializer.Serialize(Prop, new JsonSerializerOptions { WriteIndented = true });
 
                 AtomicFile.WriteText(FileLocation, contents);
 
@@ -147,6 +149,7 @@ namespace Bloxstrap
 
             App.Logger.WriteLine(LOG_IDENT, "Save complete!");
             LastSaveSucceeded = true;
+            Saved?.Invoke(contents);
             return true;
         }
 

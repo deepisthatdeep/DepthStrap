@@ -12,6 +12,8 @@
 
         public bool ForceReinstall { get; set; } = false;
 
+        public DeferredAppUpdate? DeferredAppUpdate { get; set; }
+
         public WindowState SettingsWindow { get; set; } = new();
 
         public List<ModConfig> Mods { get; set; } = new();
@@ -27,4 +29,6 @@
             foreach (var mod in Mods) mod.Target ??= "Player";
         }
     }
+
+    public sealed record DeferredAppUpdate(string InstalledVersion, string? IncomingVersion, string Reason);
 }

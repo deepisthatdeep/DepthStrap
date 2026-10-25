@@ -27,7 +27,7 @@ function Copy-SourceFile([string]$RelativePath) {
     Copy-Item -LiteralPath $from -Destination $to
 }
 
-$sourceSelections = @('.githooks', '.gitattributes', 'Bloxstrap', 'Scripts', 'Tests', 'DepthStrap.slnx', 'README.md', 'NOTICE.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-UNLICENSE', 'LICENSE-INITIAL-REPOSITORY', 'flake.nix', 'flake.lock', 'justfile')
+$sourceSelections = @('.githooks', '.gitattributes', 'Bloxstrap', 'Scripts', 'Tests', 'docs', 'DepthStrap.slnx', 'README.md', 'NOTICE.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-UNLICENSE', 'LICENSE-INITIAL-REPOSITORY', 'flake.nix', 'flake.lock', 'justfile')
 if (Test-Path -LiteralPath (Join-Path $projectRoot '.git')) {
     $sourceFiles = & git -C $projectRoot ls-files --cached --others --exclude-standard -- @sourceSelections
     if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate application source.' }
@@ -55,6 +55,9 @@ if (!(Test-Path -LiteralPath $publishedExe)) { throw 'Publish the Windows execut
 Copy-Item -LiteralPath $publishedExe -Destination (Join-Path $binaryRoot 'DepthStrap.exe')
 foreach ($document in @('README.md', 'NOTICE.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-UNLICENSE', 'LICENSE-INITIAL-REPOSITORY')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot $document) -Destination (Join-Path $binaryRoot $document)
+}
+if (Test-Path -LiteralPath (Join-Path $sourceRoot 'docs')) {
+    Copy-Item -LiteralPath (Join-Path $sourceRoot 'docs') -Destination $binaryRoot -Recurse
 }
 Get-ChildItem -LiteralPath (Join-Path $projectRoot 'artifacts/publish') -Filter 'License*.txt' -File |
     Copy-Item -Destination $noticeRoot

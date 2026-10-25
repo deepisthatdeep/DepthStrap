@@ -186,8 +186,13 @@ internal static class Program
         }
         if (args.Contains("--update-only"))
         {
-            AppUpdateChecks.Run(Check); AppUpdateFlowChecks.Run(Check); AppUpdateHandoffChecks.Run(Check);
+            AppUpdateChecks.Run(Check); AppUpdateFlowChecks.Run(Check); AppUpdateStatusChecks.Run(Check); AppUpdateHandoffChecks.Run(Check);
             Console.WriteLine($"PASS: {_checks} updater checks"); return;
+        }
+        if (args.Contains("--fixes-only"))
+        {
+            RunFixChecks();
+            Console.WriteLine($"PASS: {_checks} documented-fix checks"); return;
         }
         if (args.Contains("--audit-only")) { ReliabilityAuditChecks.Run(Check); Console.WriteLine($"PASS: {_checks} audit checks"); return; }
         if (args.Contains("--public-network-only")) { ServerBrowserChecks.VerifyPublicNetwork(Check); Console.WriteLine($"PASS: {_checks} public network checks"); return; }
@@ -211,6 +216,7 @@ internal static class Program
             Console.WriteLine($"PASS: {_checks} popup checks");
             return;
         }
+        Console.WriteLine("Checking core, networking and settings");
         VerifyCore();
         PublicNetworkHttpChecks.Run(Check);
         NetworkChecks.Run(Check, args.Contains("--verify-warp-package") ? args[Array.IndexOf(args, "--verify-warp-package") + 1] : null);
@@ -219,11 +225,13 @@ internal static class Program
         SettingsChecks.Run(Check);
         ClientFilesChecks.Run(Check);
         VersionChecks.Run(Check);
+        Console.WriteLine("Checking updater and installer");
         AppUpdateChecks.Run(Check);
         AppUpdateFlowChecks.Run(Check);
         AppUpdateHandoffChecks.Run(Check);
         InstallerChecks.Run(Check);
         InstallLifecycleChecks.Run(Check);
+        Console.WriteLine("Checking browser, logger and watcher fixtures");
         ServerBrowserChecks.Run(Check);
         GameSearchChecks.Run(Check);
         if (args.Contains("--verify-public-network")) ServerBrowserChecks.VerifyPublicNetwork(Check);
@@ -231,8 +239,11 @@ internal static class Program
         LoggerChecks.Run(Check);
         WatcherChecks.Run(Check);
         SessionStateFileChecks.Run(Check);
+        Console.WriteLine("Checking reliability and history");
         ReliabilityAuditChecks.Run(Check);
         HistoryChecks.Run(Check);
+        RunFixChecks();
+        Console.WriteLine("Checking themes, layouts and popups");
         VerifyThemes(app);
         OptionLayoutChecks.Run(Check);
         ShellLayoutChecks.Run(Check, Path.GetDirectoryName(output)!, SaveVisual);
@@ -328,6 +339,22 @@ internal static class Program
         Check(bindingErrors.Messages.Count == 0, "Active page binding errors: " + string.Join("\n", bindingErrors.Messages.Take(12)));
         Console.WriteLine($"PASS: {_checks} checks, seven settings pages, all theme popup previews, network setup, menu, alert and rejoin previews.");
         Environment.Exit(0);
+    }
+
+    private static void RunFixChecks()
+    {
+        Console.WriteLine("Checking normal uninstall outcomes");
+        NormalUninstallChecks.Run(Paths.Base, Check);
+        Console.WriteLine("Checking post-launch process lifetime");
+        PostLaunchProcessChecks.Run(Check);
+        Console.WriteLine("Checking settings changes and channel requests");
+        SettingsInteractionChecks.Run(Check);
+        Console.WriteLine("Checking history window lifetime");
+        HistoryLifetimeChecks.Run(Check);
+        Console.WriteLine("Checking atomic export and network refusal");
+        ExportAndNetworkGuardChecks.Run(Check);
+        Console.WriteLine("Checking deferred update status");
+        AppUpdateStatusChecks.Run(Check);
     }
 
     private static void CheckReleaseDropdown(AdvancedRobloxSettingsPage launchSettingsPage)

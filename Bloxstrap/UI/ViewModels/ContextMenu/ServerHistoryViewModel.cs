@@ -2,12 +2,19 @@ using Bloxstrap.Roblox;
 using System.Windows.Input;
 using Bloxstrap.Integrations;
 using CommunityToolkit.Mvvm.Input;
+using System.Windows;
+using System.Windows.Threading;
 
 namespace Bloxstrap.UI.ViewModels.ContextMenu
 {
-    internal class ServerHistoryViewModel : NotifyPropertyChangedViewModel
+    internal class ServerHistoryViewModel : NotifyPropertyChangedViewModel, IDisposable
     {
         private readonly ActivityWatcher _activityWatcher;
+        private readonly Func<string, Task> _fetchDetails;
+        private readonly Dispatcher _dispatcher = Application.Current.Dispatcher;
+        private bool _disposed;
+        private int _loadVersion;
+        internal Task HistoryLoadTask { get; private set; } = Task.CompletedTask;
 
         public List<ActivityData>? GameHistory { get; private set; }
 
@@ -20,17 +27,34 @@ namespace Bloxstrap.UI.ViewModels.ContextMenu
 
         public EventHandler? RequestCloseEvent;
 
-        public ServerHistoryViewModel(ActivityWatcher activityWatcher)
+        public ServerHistoryViewModel(ActivityWatcher activityWatcher) : this(activityWatcher, UniverseDetails.FetchBulk) { }
+
+        internal ServerHistoryViewModel(ActivityWatcher activityWatcher, Func<string, Task> fetchDetails)
         {
             _activityWatcher = activityWatcher;
+            _fetchDetails = fetchDetails;
 
-            _activityWatcher.OnGameLeave += (_, _) => LoadData();
-            _activityWatcher.OnHistoryUpdated += (_, _) => LoadData();
+            _activityWatcher.OnGameLeave += OnHistoryChanged;
+            _activityWatcher.OnHistoryUpdated += OnHistoryChanged;
 
             LoadData();
         }
 
-        private async void LoadData()
+        private void OnHistoryChanged(object? sender, EventArgs e)
+        {
+            if (_disposed) return;
+            if (_dispatcher.CheckAccess()) LoadData();
+            else _dispatcher.BeginInvoke(LoadData);
+        }
+
+        private void LoadData()
+        {
+            if (!_disposed) HistoryLoadTask = LoadDataAsync(++_loadVersion);
+        }
+
+        private bool IsCurrent(int version) => !_disposed && version == _loadVersion;
+
+        private async Task LoadDataAsync(int version)
         {
             LoadState = GenericTriState.Unknown;
             OnPropertyChanged(nameof(LoadState));
@@ -38,6 +62,7 @@ namespace Bloxstrap.UI.ViewModels.ContextMenu
             try
             {
                 await Task.Run(CleanOldEntries);
+                if (!IsCurrent(version)) return;
 
                 var entriesNeedingDetails = _activityWatcher.History
                     .Where(x => x.UniverseId != 0 && x.UniverseDetails is null &&
@@ -54,7 +79,8 @@ namespace Bloxstrap.UI.ViewModels.ContextMenu
                     if (universeIds.Any())
                     {
                         string universeIdsString = String.Join(',', universeIds);
-                        await UniverseDetails.FetchBulk(universeIdsString);
+                        await _fetchDetails(universeIdsString);
+                        if (!IsCurrent(version)) return;
 
                         foreach (var entry in entriesNeedingDetails)
                         {
@@ -63,7 +89,9 @@ namespace Bloxstrap.UI.ViewModels.ContextMenu
                     }
                 }
 
-                GameHistory = ProcessAndConsolidateHistory(_activityWatcher.History);
+                var history = ProcessAndConsolidateHistory(_activityWatcher.History);
+                DetachDeleteEvents();
+                GameHistory = history;
 
                 // Hook up delete events
                 if (GameHistory != null)
@@ -81,6 +109,7 @@ namespace Bloxstrap.UI.ViewModels.ContextMenu
             }
             catch (Exception ex)
             {
+                if (!IsCurrent(version)) return;
                 App.Logger.WriteException("ServerHistoryViewModel::LoadData", ex);
 
                 Error = $"Failed to load game history: {ex.Message}";
@@ -181,6 +210,7 @@ namespace Bloxstrap.UI.ViewModels.ContextMenu
 
         private void CleanOldHistory()
         {
+            if (_disposed) return;
             CleanOldEntries();
             LoadData();
         }
@@ -192,6 +222,7 @@ namespace Bloxstrap.UI.ViewModels.ContextMenu
 
         public void DeleteHistoryEntry(string jobId)
         {
+            if (_disposed) return;
             try
             {
                 int removedCount = _activityWatcher.History.RemoveAll(x => x.JobId == jobId);
@@ -216,6 +247,23 @@ namespace Bloxstrap.UI.ViewModels.ContextMenu
             {
                 App.Logger.WriteException("ServerHistoryViewModel::DeleteHistoryEntry", ex);
             }
+        }
+
+        private void DetachDeleteEvents()
+        {
+            if (GameHistory is null) return;
+            foreach (var entry in GameHistory) entry.OnDeleteRequested -= OnActivityDeleteRequested;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _loadVersion++;
+            _activityWatcher.OnGameLeave -= OnHistoryChanged;
+            _activityWatcher.OnHistoryUpdated -= OnHistoryChanged;
+            DetachDeleteEvents();
+            RequestCloseEvent = null;
         }
 
         private void RequestClose() => RequestCloseEvent?.Invoke(this, EventArgs.Empty);
